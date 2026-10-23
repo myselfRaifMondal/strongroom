@@ -608,7 +608,6 @@ fn build_negatives() -> Vec<Negative> {
         ),
     ]
     .into_iter()
-    .map(|(n, d, c, k, f)| (n, d, c, k, f))
     .collect();
 
     // Encrypted-and-authenticated payloads that must still be rejected.

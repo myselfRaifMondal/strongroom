@@ -33,6 +33,9 @@ pub trait DeviceKey {
     /// Raw ECDH shared secret (x-coordinate) with `peer` (uncompressed SEC1).
     /// Any failure must be reported as `Err`; the core maps it to the generic
     /// unlock failure.
+    // The unit error is deliberate: no failure detail may leak (SPEC-VTF 4.6),
+    // and the signature is mirrored by the FFI contract, so it stays.
+    #[allow(clippy::result_unit_err)]
     fn agree(&self, peer: &[u8; PUBLIC_KEY_LEN]) -> core::result::Result<Zeroizing<[u8; 32]>, ()>;
 }
 

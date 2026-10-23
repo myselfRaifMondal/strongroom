@@ -18,3 +18,12 @@ pub use device::DeviceKey;
 pub use error::{Check, Error, Result};
 pub use keys::{Password, SecretKey};
 pub use payload::{Field, Item, ItemData, ItemKind, Payload, Revision, Tombstone};
+
+/// Fuzzing hook: SPEC-VTF checks 16-26 on an already-decrypted plaintext
+/// (CBOR item || padding). Exists only when built with `--cfg fuzzing`
+/// (cargo-fuzz sets it); never part of the shipped API.
+#[cfg(fuzzing)]
+#[doc(hidden)]
+pub fn fuzz_decode_plaintext(plaintext: &[u8]) -> Result<Payload> {
+    payload::decode_plaintext(plaintext)
+}
