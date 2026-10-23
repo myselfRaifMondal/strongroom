@@ -29,8 +29,12 @@ public class FfiTests
         Assert.Contains("x", CoreErrors.Describe(new StrongroomException.FormatRejected("x")));
     }
 
+    // Runs on a large-stack thread: see CoreThread (1 MB default Windows
+    // stacks overflowed inside the core's Vault.create on CI).
     [SkippableFact]
-    public void CreateAddSearchExportImport()
+    public void CreateAddSearchExportImport() => CoreThread.Run(CreateAddSearchExportImportBody);
+
+    private static void CreateAddSearchExportImportBody()
     {
         var dir = Directory.CreateTempSubdirectory("sr-ffi-").FullName;
         try

@@ -40,7 +40,7 @@ public sealed partial class CreateVaultPage : Page
         try
         {
             var path = AppServices.Paths.VaultFile;
-            var (vault, key) = await Task.Run(() =>
+            var (vault, key) = await CoreThread.RunAsync(() =>
             {
                 var sk = StrongroomCore.GenerateSecretKey();
                 if (string.IsNullOrEmpty(sk))

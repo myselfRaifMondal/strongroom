@@ -26,7 +26,8 @@ public sealed partial class ItemEditPage : Page
             return;
         try
         {
-            var d = vault.GetItem(_id).Data;
+            var id = _id;
+            var d = CoreThread.Run(() => vault.GetItem(id)).Data;
             Heading.Text = "Edit item";
             Kind.SelectedItem = d.Kind;
             TitleBox.Text = d.Title;
@@ -99,9 +100,12 @@ public sealed partial class ItemEditPage : Page
         try
         {
             if (_id is null)
-                _id = vault.AddItem(input, Clock.Now());
+                _id = CoreThread.Run(() => vault.AddItem(input, Clock.Now()));
             else
-                vault.UpdateItem(_id, input, Clock.Now());
+            {
+                var id = _id;
+                CoreThread.Run(() => vault.UpdateItem(id, input, Clock.Now()));
+            }
             AppServices.Main?.Navigate(typeof(ItemDetailPage), _id);
         }
         catch (Exception ex)

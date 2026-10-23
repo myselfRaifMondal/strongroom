@@ -39,7 +39,7 @@ public sealed partial class ItemDetailPage : Page
         if (vault is null || _id is null) return;
         try
         {
-            _item = vault.GetItem(_id);
+            _item = CoreThread.Run(() => vault.GetItem(_id));
         }
         catch (Exception ex)
         {
@@ -88,7 +88,8 @@ public sealed partial class ItemDetailPage : Page
         if (vault is null || _id is null) { _totpTimer?.Stop(); return; }
         try
         {
-            var code = vault.ItemTotp(_id, Clock.Now());
+            var totpId = _id;
+            var code = CoreThread.Run(() => vault.ItemTotp(totpId, Clock.Now()));
             _totpCode = code.Code;
             TotpText.Text = code.Code.Length == 6 ? $"{code.Code[..3]} {code.Code[3..]}" : code.Code;
             TotpProgress.Maximum = code.Period;
@@ -139,7 +140,8 @@ public sealed partial class ItemDetailPage : Page
             return;
         try
         {
-            vault.TrashItem(_id, Clock.Now());
+            var id = _id;
+            CoreThread.Run(() => vault.TrashItem(id, Clock.Now()));
             AppServices.Main?.ShowVault();
         }
         catch (Exception ex)

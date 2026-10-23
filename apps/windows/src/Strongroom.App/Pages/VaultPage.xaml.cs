@@ -70,7 +70,7 @@ public sealed partial class VaultPage : Page
         try
         {
             var (password, secretKey) = creds.Value;
-            var bytes = await Task.Run(() => vault.ExportVtf(password, secretKey, Array.Empty<byte[]>(), Clock.Now()));
+            var bytes = await CoreThread.RunAsync(() => vault.ExportVtf(password, secretKey, Array.Empty<byte[]>(), Clock.Now()));
             await File.WriteAllBytesAsync(file.Path, bytes);
             AppServices.Main.Notify($"Exported to {file.Path}", InfoBarSeverity.Success);
         }
@@ -94,7 +94,7 @@ public sealed partial class VaultPage : Page
                 $"Enter the master password and Secret Key of the vault that exported this file (VTF v{info.Version}, {info.PasswordSlots} password slot(s)).");
             if (creds is null) return;
             var (password, secretKey) = creds.Value;
-            var s = await Task.Run(() => vault.ImportVtf(bytes, password, secretKey, Clock.Now()));
+            var s = await CoreThread.RunAsync(() => vault.ImportVtf(bytes, password, secretKey, Clock.Now()));
             AppServices.Main.Notify($"Imported: {s.Added} added, {s.Updated} updated, {s.Unchanged} unchanged, {s.Conflicts} conflicts.", InfoBarSeverity.Success);
             Refresh();
         }
@@ -125,7 +125,7 @@ public sealed partial class VaultPage : Page
                     return;
                 }
                 var hwnd = main.Hwnd;
-                await Task.Run(() => AppServices.Device.Enroll(vault, hwnd));
+                await CoreThread.RunAsync<object?>(() => { AppServices.Device.Enroll(vault, hwnd); return null; });
                 main.Notify("Windows Hello unlock turned on. Your master password is still required after a restart, every 7 days and after 5 failed attempts.", InfoBarSeverity.Success);
             }
         }

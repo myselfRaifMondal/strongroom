@@ -47,7 +47,7 @@ public sealed partial class UnlockPage : Page
         try
         {
             var path = AppServices.Paths.VaultFile;
-            var vault = await Task.Run(() => Vault.UnlockWithPassword(path, password, secretKey, Clock.Now()));
+            var vault = await CoreThread.RunAsync(() => Vault.UnlockWithPassword(path, password, secretKey, Clock.Now()));
             AppServices.RecordPasswordUnlock();
             Password.Password = "";
             SecretKey.Password = "";
@@ -70,7 +70,7 @@ public sealed partial class UnlockPage : Page
         SetBusy(true);
         try
         {
-            var vault = await Task.Run(() => AppServices.Device.Unlock());
+            var vault = await CoreThread.RunAsync(() => AppServices.Device.Unlock());
             using (var gate = AppServices.OpenGate())
                 gate.RecordBiometricSuccess();
             AppServices.SetVault(vault);
