@@ -30,7 +30,9 @@
 
 use subtle::ConstantTimeEq;
 use vtf_core::device::{self, DeviceKey, ENC_LEN, KEY_ID_LEN, PUBLIC_KEY_LEN};
-use vtf_core::keys::{self, Key, Password, SecretKey, ARGON2_M_KIB, ARGON2_P, ARGON2_T, KEY_LEN, NONCE_LEN, TAG_LEN};
+use vtf_core::keys::{
+    self, Key, Password, SecretKey, ARGON2_M_KIB, ARGON2_P, ARGON2_T, KEY_LEN, NONCE_LEN, TAG_LEN,
+};
 use zeroize::Zeroizing;
 
 use crate::error::{Error, Result};
@@ -85,10 +87,20 @@ impl Header {
         let salt = rand::<32>()?;
         let nonce = rand::<NONCE_LEN>()?;
         let kek = keys::derive_kek(password, secret_key, &salt)?;
-        let ct = keys::seal(&kek, &nonce, &Self::aad(&vault_id, &salt, &nonce), vault_key.as_ref());
+        let ct = keys::seal(
+            &kek,
+            &nonce,
+            &Self::aad(&vault_id, &salt, &nonce),
+            vault_key.as_ref(),
+        );
         let mut wrapped = [0u8; KEY_LEN + TAG_LEN];
         wrapped.copy_from_slice(&ct);
-        Ok(Header { vault_id, salt, nonce, wrapped })
+        Ok(Header {
+            vault_id,
+            salt,
+            nonce,
+            wrapped,
+        })
     }
 
     pub fn to_bytes(&self) -> [u8; HEADER_LEN] {
@@ -110,7 +122,12 @@ impl Header {
             return None;
         }
         let wrapped = b[AAD_LEN..].try_into().ok()?;
-        Some(Header { vault_id, salt, nonce, wrapped })
+        Some(Header {
+            vault_id,
+            salt,
+            nonce,
+            wrapped,
+        })
     }
 
     pub fn salt(&self) -> &[u8; 32] {
@@ -119,7 +136,12 @@ impl Header {
 
     /// Unwraps the vault key with an already derived KEK.
     pub fn open_with_kek(&self, kek: &Key) -> Option<Key> {
-        let pt = keys::open(kek, &self.nonce, &Self::aad(&self.vault_id, &self.salt, &self.nonce), &self.wrapped)?;
+        let pt = keys::open(
+            kek,
+            &self.nonce,
+            &Self::aad(&self.vault_id, &self.salt, &self.nonce),
+            &self.wrapped,
+        )?;
         let mut k = Zeroizing::new([0u8; KEY_LEN]);
         if pt.len() != KEY_LEN {
             return None;
@@ -154,7 +176,8 @@ pub fn wrap_for_device(vault_key: &Key, vault_id: &[u8; 16], device_pk: &[u8]) -
     let pk: &[u8; PUBLIC_KEY_LEN] = device_pk
         .try_into()
         .map_err(|_| Error::InvalidInput("device public key must be 65 bytes"))?;
-    device::validate_public_key(pk).map_err(|_| Error::InvalidInput("device public key is not a valid P-256 point"))?;
+    device::validate_public_key(pk)
+        .map_err(|_| Error::InvalidInput("device public key is not a valid P-256 point"))?;
     let ikm_e = Zeroizing::new(rand::<32>()?);
     let (enc, wrap_key) = device::seal_export(pk, &hpke_info(vault_id), LABEL_DEVICE_WRAP, &ikm_e)?;
     let nonce = rand::<NONCE_LEN>()?;
@@ -163,7 +186,12 @@ pub fn wrap_for_device(vault_key: &Key, vault_id: &[u8; 16], device_pk: &[u8]) -
     blob.extend_from_slice(&device::key_id(pk));
     blob.extend_from_slice(&enc);
     blob.extend_from_slice(&nonce);
-    let ct = keys::seal(&wrap_key, &nonce, &device_aad(vault_id, &blob), vault_key.as_ref());
+    let ct = keys::seal(
+        &wrap_key,
+        &nonce,
+        &device_aad(vault_id, &blob),
+        vault_key.as_ref(),
+    );
     blob.extend_from_slice(&ct);
     debug_assert_eq!(blob.len(), DEVICE_BLOB_LEN);
     Ok(blob)
@@ -182,7 +210,12 @@ pub fn unwrap_with_device(blob: &[u8], vault_id: &[u8; 16], device: &dyn DeviceK
         return None;
     }
     let wrap_key = device::open_export(device, enc, &hpke_info(vault_id), LABEL_DEVICE_WRAP)?;
-    let pt = keys::open(&wrap_key, nonce, &device_aad(vault_id, &blob[..98]), &blob[98..])?;
+    let pt = keys::open(
+        &wrap_key,
+        nonce,
+        &device_aad(vault_id, &blob[..98]),
+        &blob[98..],
+    )?;
     if pt.len() != KEY_LEN {
         return None;
     }

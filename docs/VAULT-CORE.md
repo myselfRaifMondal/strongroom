@@ -8,8 +8,14 @@ A vault at `P` is two files:
 
 - `P` — SQLCipher 4 database (rusqlite, `bundled-sqlcipher-vendored-openssl`),
   keyed with the 32-byte random **vault key** as a raw key (`PRAGMA key =
-  "x'…'"`, no SQLCipher PBKDF). `cipher_memory_security` and `secure_delete`
-  are on.
+  "x'…'"`, no SQLCipher PBKDF). `secure_delete` is on.
+  `cipher_memory_security` is deliberately **off**: it mlock()s every SQLite
+  allocation, and once the OS lock quota is exhausted (Windows working-set
+  quota, error 1453; small `RLIMIT_MEMLOCK` on Linux/Android) SQLCipher's
+  warning logger allocates through the same failing allocator and recurses
+  until the stack overflows. SQLCipher still wipes its own key material and
+  codec buffers (private heap) on free; general SQLite page-cache memory is
+  not wiped.
 - `P.hdr` — 138-byte plaintext header that wraps the vault key:
 
 ```

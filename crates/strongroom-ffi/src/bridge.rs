@@ -13,10 +13,16 @@ impl From<vault_core::Error> for StrongroomError {
         use vault_core::Error as E;
         match e {
             E::UnlockFailed => StrongroomError::UnlockFailed,
-            E::FormatRejected(c) => StrongroomError::FormatRejected { check: c.to_string() },
-            E::InvalidInput(r) => StrongroomError::InvalidInput { reason: r.to_string() },
+            E::FormatRejected(c) => StrongroomError::FormatRejected {
+                check: c.to_string(),
+            },
+            E::InvalidInput(r) => StrongroomError::InvalidInput {
+                reason: r.to_string(),
+            },
             E::NotFound => StrongroomError::NotFound,
-            E::Unsupported(r) => StrongroomError::Unsupported { reason: r.to_string() },
+            E::Unsupported(r) => StrongroomError::Unsupported {
+                reason: r.to_string(),
+            },
             E::Storage(r) => StrongroomError::Storage { reason: r },
             E::Internal => StrongroomError::Internal,
         }
@@ -66,7 +72,11 @@ pub fn item_in(i: ItemInput) -> ItemData {
         fields: i
             .fields
             .into_iter()
-            .map(|f| vault_core::Field { name: f.name, value: f.value, concealed: f.concealed })
+            .map(|f| vault_core::Field {
+                name: f.name,
+                value: f.value,
+                concealed: f.concealed,
+            })
             .collect(),
         travel_safe: i.travel_safe,
     }
@@ -87,7 +97,11 @@ pub fn item_out(mut d: ItemData) -> ItemInput {
         fields: d
             .fields
             .iter_mut()
-            .map(|f| CustomField { name: core::mem::take(&mut f.name), value: core::mem::take(&mut f.value), concealed: f.concealed })
+            .map(|f| CustomField {
+                name: core::mem::take(&mut f.name),
+                value: core::mem::take(&mut f.value),
+                concealed: f.concealed,
+            })
             .collect(),
         travel_safe: d.travel_safe,
     }
@@ -108,7 +122,12 @@ pub fn summary_out(s: vault_core::Summary) -> ItemSummary {
 }
 
 pub fn import_out(s: vault_core::ImportSummary) -> ImportSummary {
-    ImportSummary { added: s.added, updated: s.updated, unchanged: s.unchanged, conflicts: s.conflicts }
+    ImportSummary {
+        added: s.added,
+        updated: s.updated,
+        unchanged: s.unchanged,
+        conflicts: s.conflicts,
+    }
 }
 
 pub fn health_out(h: vault_core::HealthReport) -> HealthReport {
@@ -121,7 +140,11 @@ pub fn health_out(h: vault_core::HealthReport) -> HealthReport {
 }
 
 pub fn totp_out(t: vault_core::totp::TotpCode) -> TotpCode {
-    TotpCode { code: t.code, period: t.period, seconds_remaining: t.seconds_remaining }
+    TotpCode {
+        code: t.code,
+        period: t.period,
+        seconds_remaining: t.seconds_remaining,
+    }
 }
 
 pub fn csv_in(s: CsvSource) -> vault_core::CsvSource {
@@ -158,12 +181,18 @@ impl DeviceKey for Hardware<'_> {
     fn public_key(&self) -> [u8; PUBLIC_KEY_LEN] {
         // A wrong-length key yields an all-zero key whose key_id never
         // matches, so the unlock fails generically.
-        self.0.public_key().as_slice().try_into().unwrap_or([0u8; PUBLIC_KEY_LEN])
+        self.0
+            .public_key()
+            .as_slice()
+            .try_into()
+            .unwrap_or([0u8; PUBLIC_KEY_LEN])
     }
 
     fn agree(&self, peer: &[u8; PUBLIC_KEY_LEN]) -> Result<Zeroizing<[u8; 32]>, ()> {
         let mut shared = self.0.agree(peer.to_vec()).map_err(|_| ())?;
-        let out = <[u8; 32]>::try_from(shared.as_slice()).map(Zeroizing::new).map_err(|_| ());
+        let out = <[u8; 32]>::try_from(shared.as_slice())
+            .map(Zeroizing::new)
+            .map_err(|_| ());
         shared.zeroize();
         out
     }

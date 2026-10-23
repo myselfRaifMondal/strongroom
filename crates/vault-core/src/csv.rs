@@ -105,7 +105,9 @@ struct Columns {
 
 impl Columns {
     fn idx(&self, cands: &[&str]) -> Option<usize> {
-        cands.iter().find_map(|c| self.names.iter().position(|n| n == c))
+        cands
+            .iter()
+            .find_map(|c| self.names.iter().position(|n| n == c))
     }
 }
 
@@ -141,8 +143,14 @@ fn title_or_host(title: Option<String>, url: Option<&str>) -> String {
 }
 
 fn split_list(v: Option<&str>, seps: &[char]) -> Vec<String> {
-    v.map(|s| s.split(seps).map(str::trim).filter(|t| !t.is_empty()).map(str::to_string).collect())
-        .unwrap_or_default()
+    v.map(|s| {
+        s.split(seps)
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(str::to_string)
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 /// Maps parsed CSV text to items. The first row must be the header.
@@ -151,7 +159,9 @@ pub fn items(source: CsvSource, text: &str) -> Result<Vec<ItemData>> {
     let Some((header, body)) = rows.split_first() else {
         return Ok(vec![]);
     };
-    let cols = Columns { names: header.iter().map(|h| h.trim().to_lowercase()).collect() };
+    let cols = Columns {
+        names: header.iter().map(|h| h.trim().to_lowercase()).collect(),
+    };
     let mut out = Vec::new();
     match source {
         CsvSource::Bitwarden => {
@@ -167,9 +177,14 @@ pub fn items(source: CsvSource, text: &str) -> Result<Vec<ItemData>> {
                 cols.idx(&["login_totp"]),
             );
             if name.is_none() || typ.is_none() {
-                return Err(Error::InvalidInput("not a Bitwarden CSV export (missing name/type columns)"));
+                return Err(Error::InvalidInput(
+                    "not a Bitwarden CSV export (missing name/type columns)",
+                ));
             }
-            for row in body.iter().filter(|r| r.iter().any(|f| !f.trim().is_empty())) {
+            for row in body
+                .iter()
+                .filter(|r| r.iter().any(|f| !f.trim().is_empty()))
+            {
                 let kind = match get(row, typ).map(str::to_ascii_lowercase).as_deref() {
                     Some("note") => ItemKind::SecureNote,
                     Some("card") => ItemKind::Card,
@@ -177,7 +192,10 @@ pub fn items(source: CsvSource, text: &str) -> Result<Vec<ItemData>> {
                     _ => ItemKind::Login,
                 };
                 let urls = split_list(get(row, uri), &[',', '\n']);
-                let mut d = blank(kind, title_or_host(opt(row, name), urls.first().map(String::as_str)));
+                let mut d = blank(
+                    kind,
+                    title_or_host(opt(row, name), urls.first().map(String::as_str)),
+                );
                 d.urls = urls;
                 d.folder = opt(row, folder);
                 d.notes = opt(row, notes);
@@ -187,7 +205,11 @@ pub fn items(source: CsvSource, text: &str) -> Result<Vec<ItemData>> {
                 if let Some(fs) = get(row, fields) {
                     for line in fs.lines().filter(|l| !l.trim().is_empty()) {
                         let (n, v) = line.split_once(": ").unwrap_or((line, ""));
-                        d.fields.push(Field { name: n.trim().to_string(), value: v.to_string(), concealed: false });
+                        d.fields.push(Field {
+                            name: n.trim().to_string(),
+                            value: v.to_string(),
+                            concealed: false,
+                        });
                     }
                 }
                 out.push(d);
@@ -202,13 +224,25 @@ pub fn items(source: CsvSource, text: &str) -> Result<Vec<ItemData>> {
             let notes = cols.idx(&["notes", "notesplain"]);
             let tags = cols.idx(&["tags"]);
             if title.is_none() && url.is_none() {
-                return Err(Error::InvalidInput("not a 1Password CSV export (missing title/url columns)"));
+                return Err(Error::InvalidInput(
+                    "not a 1Password CSV export (missing title/url columns)",
+                ));
             }
-            for row in body.iter().filter(|r| r.iter().any(|f| !f.trim().is_empty())) {
+            for row in body
+                .iter()
+                .filter(|r| r.iter().any(|f| !f.trim().is_empty()))
+            {
                 let urls = split_list(get(row, url), &[',', '\n']);
                 let (u, p) = (opt(row, user), opt(row, pass));
-                let kind = if u.is_none() && p.is_none() && urls.is_empty() { ItemKind::SecureNote } else { ItemKind::Login };
-                let mut d = blank(kind, title_or_host(opt(row, title), urls.first().map(String::as_str)));
+                let kind = if u.is_none() && p.is_none() && urls.is_empty() {
+                    ItemKind::SecureNote
+                } else {
+                    ItemKind::Login
+                };
+                let mut d = blank(
+                    kind,
+                    title_or_host(opt(row, title), urls.first().map(String::as_str)),
+                );
                 d.urls = urls;
                 d.username = u;
                 d.password = p;
@@ -229,13 +263,25 @@ pub fn items(source: CsvSource, text: &str) -> Result<Vec<ItemData>> {
                 cols.idx(&["grouping"]),
             );
             if url.is_none() || name.is_none() {
-                return Err(Error::InvalidInput("not a LastPass CSV export (missing url/name columns)"));
+                return Err(Error::InvalidInput(
+                    "not a LastPass CSV export (missing url/name columns)",
+                ));
             }
-            for row in body.iter().filter(|r| r.iter().any(|f| !f.trim().is_empty())) {
+            for row in body
+                .iter()
+                .filter(|r| r.iter().any(|f| !f.trim().is_empty()))
+            {
                 let u = get(row, url);
                 let is_note = u == Some("http://sn");
-                let kind = if is_note { ItemKind::SecureNote } else { ItemKind::Login };
-                let mut d = blank(kind, title_or_host(opt(row, name), if is_note { None } else { u }));
+                let kind = if is_note {
+                    ItemKind::SecureNote
+                } else {
+                    ItemKind::Login
+                };
+                let mut d = blank(
+                    kind,
+                    title_or_host(opt(row, name), if is_note { None } else { u }),
+                );
                 if !is_note {
                     d.urls = u.map(|v| vec![v.to_string()]).unwrap_or_default();
                 }
@@ -256,9 +302,14 @@ pub fn items(source: CsvSource, text: &str) -> Result<Vec<ItemData>> {
                 cols.idx(&["note", "notes"]),
             );
             if url.is_none() || pass.is_none() {
-                return Err(Error::InvalidInput("not a Chrome CSV export (missing url/password columns)"));
+                return Err(Error::InvalidInput(
+                    "not a Chrome CSV export (missing url/password columns)",
+                ));
             }
-            for row in body.iter().filter(|r| r.iter().any(|f| !f.trim().is_empty())) {
+            for row in body
+                .iter()
+                .filter(|r| r.iter().any(|f| !f.trim().is_empty()))
+            {
                 let u = get(row, url);
                 let mut d = blank(ItemKind::Login, title_or_host(opt(row, name), u));
                 d.urls = u.map(|v| vec![v.to_string()]).unwrap_or_default();
@@ -302,7 +353,10 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].title, "Mail");
         assert_eq!(items[0].folder.as_deref(), Some("Work"));
-        assert_eq!(items[0].urls, ["https://mail.example.com", "https://example.com"]);
+        assert_eq!(
+            items[0].urls,
+            ["https://mail.example.com", "https://example.com"]
+        );
         assert_eq!(items[0].password.as_deref(), Some("s3cret"));
         assert_eq!(items[0].fields.len(), 2);
         assert_eq!(items[0].fields[0].value, "1234");

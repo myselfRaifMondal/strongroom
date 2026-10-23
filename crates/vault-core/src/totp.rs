@@ -62,7 +62,10 @@ impl TotpParams {
     /// `otpauth://totp/...` URI.
     pub fn parse(input: &str) -> Result<TotpParams> {
         let t = input.trim();
-        let lower_prefix = t.get(..10).map(|p| p.eq_ignore_ascii_case("otpauth://")).unwrap_or(false);
+        let lower_prefix = t
+            .get(..10)
+            .map(|p| p.eq_ignore_ascii_case("otpauth://"))
+            .unwrap_or(false);
         if !lower_prefix {
             let secret = base32_decode(t).ok_or(BAD)?;
             return Self::checked(secret, Algorithm::Sha1, 6, 30);
@@ -70,7 +73,9 @@ impl TotpParams {
         let rest = &t[10..];
         let (kind, rest) = rest.split_once('/').ok_or(BAD)?;
         if kind.eq_ignore_ascii_case("hotp") {
-            return Err(Error::Unsupported("HOTP counters are not supported; use TOTP"));
+            return Err(Error::Unsupported(
+                "HOTP counters are not supported; use TOTP",
+            ));
         }
         if !kind.eq_ignore_ascii_case("totp") {
             return Err(BAD);
@@ -100,7 +105,12 @@ impl TotpParams {
         Self::checked(secret.ok_or(BAD)?, alg, digits, period)
     }
 
-    fn checked(secret: Zeroizing<Vec<u8>>, algorithm: Algorithm, digits: u32, period: u32) -> Result<TotpParams> {
+    fn checked(
+        secret: Zeroizing<Vec<u8>>,
+        algorithm: Algorithm,
+        digits: u32,
+        period: u32,
+    ) -> Result<TotpParams> {
         if secret.is_empty() {
             return Err(BAD);
         }
@@ -110,10 +120,20 @@ impl TotpParams {
         if !(1..=3600).contains(&period) {
             return Err(Error::InvalidInput("TOTP period must be 1 to 3600 seconds"));
         }
-        Ok(TotpParams { secret, algorithm, digits, period })
+        Ok(TotpParams {
+            secret,
+            algorithm,
+            digits,
+            period,
+        })
     }
 
-    pub fn new(secret: &[u8], algorithm: Algorithm, digits: u32, period: u32) -> Result<TotpParams> {
+    pub fn new(
+        secret: &[u8],
+        algorithm: Algorithm,
+        digits: u32,
+        period: u32,
+    ) -> Result<TotpParams> {
         Self::checked(Zeroizing::new(secret.to_vec()), algorithm, digits, period)
     }
 
@@ -168,7 +188,10 @@ mod tests {
     #[test]
     fn rfc4226_appendix_d() {
         let p = TotpParams::new(b"12345678901234567890", Algorithm::Sha1, 6, 30).unwrap();
-        let want = ["755224", "287082", "359152", "969429", "338314", "254676", "287922", "162583", "399871", "520489"];
+        let want = [
+            "755224", "287082", "359152", "969429", "338314", "254676", "287922", "162583",
+            "399871", "520489",
+        ];
         for (c, w) in want.iter().enumerate() {
             assert_eq!(p.hotp(c as u64), *w);
         }
@@ -188,7 +211,11 @@ mod tests {
             (20000000000, "65353130", "77737706", "47863826"),
         ];
         for (t, w1, w256, w512) in rows {
-            for (s, alg, w) in [(&s1, Algorithm::Sha1, w1), (&s256, Algorithm::Sha256, w256), (&s512, Algorithm::Sha512, w512)] {
+            for (s, alg, w) in [
+                (&s1, Algorithm::Sha1, w1),
+                (&s256, Algorithm::Sha256, w256),
+                (&s512, Algorithm::Sha512, w512),
+            ] {
                 let p = TotpParams::new(s, alg, 8, 30).unwrap();
                 assert_eq!(p.code(t).unwrap().code, w, "t={t}");
             }
@@ -203,9 +230,22 @@ mod tests {
         assert_eq!(c.code, "94287082");
         assert_eq!(c.period, 30);
         assert_eq!(c.seconds_remaining, 1);
-        assert_eq!(totp_code("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59).unwrap().code, "287082");
-        assert_eq!(totp_code("gezd gnbv gy3t qojq gezd gnbv gy3t qojq", 59).unwrap().code, "287082");
-        let p = TotpParams::parse("otpauth://totp/x?secret=GEZDGNBV&algorithm=sha512&digits=7&period=60").unwrap();
+        assert_eq!(
+            totp_code("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", 59)
+                .unwrap()
+                .code,
+            "287082"
+        );
+        assert_eq!(
+            totp_code("gezd gnbv gy3t qojq gezd gnbv gy3t qojq", 59)
+                .unwrap()
+                .code,
+            "287082"
+        );
+        let p = TotpParams::parse(
+            "otpauth://totp/x?secret=GEZDGNBV&algorithm=sha512&digits=7&period=60",
+        )
+        .unwrap();
         assert!(p.algorithm == Algorithm::Sha512 && p.digits == 7 && p.period == 60);
         assert!(TotpParams::parse("otpauth://hotp/x?secret=GEZDGNBV&counter=1").is_err());
         assert!(TotpParams::parse("otpauth://totp/x?issuer=a").is_err());

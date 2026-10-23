@@ -69,7 +69,10 @@ impl UnlockGate {
         let text = match fs::read_to_string(&self.path) {
             Ok(t) => t,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Some(State { last_password_unlock: None, failures: 0 })
+                return Some(State {
+                    last_password_unlock: None,
+                    failures: 0,
+                })
             }
             Err(_) => return None,
         };
@@ -85,15 +88,29 @@ impl UnlockGate {
         if lines.next().is_some() {
             return None;
         }
-        Some(State { last_password_unlock: last, failures })
+        Some(State {
+            last_password_unlock: last,
+            failures,
+        })
     }
 
     fn write(&self, s: State) -> Result<()> {
-        let last = s.last_password_unlock.map_or_else(|| "-".to_string(), |v| v.to_string());
-        write_atomic(&self.path, format!("{MAGIC}\n{last}\n{}\n", s.failures).as_bytes())
+        let last = s
+            .last_password_unlock
+            .map_or_else(|| "-".to_string(), |v| v.to_string());
+        write_atomic(
+            &self.path,
+            format!("{MAGIC}\n{last}\n{}\n", s.failures).as_bytes(),
+        )
     }
 
-    pub fn check(&self, now: i64, rebooted_since_last_password: bool, enrollment_changed: bool, has_device_key: bool) -> PasswordRequiredReason {
+    pub fn check(
+        &self,
+        now: i64,
+        rebooted_since_last_password: bool,
+        enrollment_changed: bool,
+        has_device_key: bool,
+    ) -> PasswordRequiredReason {
         use PasswordRequiredReason::*;
         if !has_device_key {
             return NoBiometricKey;
@@ -118,18 +135,30 @@ impl UnlockGate {
 
     /// A successful password unlock resets the failure count.
     pub fn record_password_unlock(&self, now: i64) -> Result<()> {
-        self.write(State { last_password_unlock: Some(now), failures: 0 })
+        self.write(State {
+            last_password_unlock: Some(now),
+            failures: 0,
+        })
     }
 
     pub fn record_biometric_failure(&self) -> Result<()> {
-        let s = self.read().unwrap_or(State { last_password_unlock: None, failures: MAX_BIOMETRIC_FAILURES });
-        self.write(State { failures: s.failures.saturating_add(1), ..s })
+        let s = self.read().unwrap_or(State {
+            last_password_unlock: None,
+            failures: MAX_BIOMETRIC_FAILURES,
+        });
+        self.write(State {
+            failures: s.failures.saturating_add(1),
+            ..s
+        })
     }
 
     /// A biometric success resets the consecutive-failure count, unless the
     /// limit was already reached (only a password unlock clears that).
     pub fn record_biometric_success(&self) -> Result<()> {
-        let s = self.read().unwrap_or(State { last_password_unlock: None, failures: MAX_BIOMETRIC_FAILURES });
+        let s = self.read().unwrap_or(State {
+            last_password_unlock: None,
+            failures: MAX_BIOMETRIC_FAILURES,
+        });
         if s.failures >= MAX_BIOMETRIC_FAILURES || s.failures == 0 {
             return Ok(());
         }

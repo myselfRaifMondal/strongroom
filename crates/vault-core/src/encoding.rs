@@ -105,7 +105,10 @@ mod tests {
             assert_eq!(base32(pt.as_bytes()), enc);
             assert_eq!(base32_decode(enc).unwrap().as_slice(), pt.as_bytes());
         }
-        assert_eq!(base32_decode("mzxw6ytboi======").unwrap().as_slice(), b"foobar");
+        assert_eq!(
+            base32_decode("mzxw6ytboi======").unwrap().as_slice(),
+            b"foobar"
+        );
         assert!(base32_decode("MZ1").is_none());
     }
 

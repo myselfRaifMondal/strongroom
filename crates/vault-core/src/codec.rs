@@ -43,7 +43,10 @@ fn encoded_len(d: &ItemData) -> usize {
         + 4
         + d.tags.iter().map(|t| str_len(t)).sum::<usize>()
         + 4
-        + d.fields.iter().map(|f| str_len(&f.name) + str_len(&f.value) + 1).sum::<usize>()
+        + d.fields
+            .iter()
+            .map(|f| str_len(&f.name) + str_len(&f.value) + 1)
+            .sum::<usize>()
 }
 
 struct W(Zeroizing<Vec<u8>>);
@@ -192,7 +195,11 @@ pub fn decode(bytes: &[u8]) -> Option<ItemData> {
             1 => true,
             _ => return None,
         };
-        d.fields.push(Field { name, value, concealed });
+        d.fields.push(Field {
+            name,
+            value,
+            concealed,
+        });
     }
     if !r.0.is_empty() {
         return None;
@@ -215,7 +222,11 @@ mod tests {
             totp: None,
             folder: Some("Finance".into()),
             tags: vec!["x".into()],
-            fields: vec![Field { name: "PIN".into(), value: "1234".into(), concealed: true }],
+            fields: vec![Field {
+                name: "PIN".into(),
+                value: "1234".into(),
+                concealed: true,
+            }],
             travel_safe: true,
         }
     }

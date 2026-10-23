@@ -11,7 +11,7 @@ use subtle::ConstantTimeEq;
 use vtf_core::device::{DeviceKey, PUBLIC_KEY_LEN};
 use vtf_core::keys::{self, Key, Password, SecretKey};
 use vtf_core::payload::{MAX_FIELDS, MAX_REVISIONS, MAX_TAGS, MAX_URLS};
-use vtf_core::{ItemData, Payload, PasswordCredentials, Revision, Tombstone};
+use vtf_core::{ItemData, PasswordCredentials, Payload, Revision, Tombstone};
 use zeroize::Zeroizing;
 
 use crate::audit::{self, AuditItem, HealthReport};
@@ -114,7 +114,9 @@ fn validate(d: &ItemData) -> Result<()> {
     let long = |s: &str| s.len() > MAX_TEXT;
     let opt_long = |s: &Option<String>| s.as_deref().is_some_and(long);
     if long(&d.title)
-        || [&d.username, &d.password, &d.notes, &d.totp, &d.folder].into_iter().any(opt_long)
+        || [&d.username, &d.password, &d.notes, &d.totp, &d.folder]
+            .into_iter()
+            .any(opt_long)
         || d.urls.iter().any(|u| long(u))
         || d.tags.iter().any(|t| long(t))
         || d.fields.iter().any(|f| long(&f.name) || long(&f.value))
@@ -128,8 +130,13 @@ fn validate(d: &ItemData) -> Result<()> {
 }
 
 fn apply_key(conn: &Connection, key: &Key) -> Result<()> {
-    // Wipe SQLCipher's freed memory (it held the key and page plaintext).
-    conn.execute_batch("PRAGMA cipher_memory_security = ON;").map_err(|_| Error::Internal)?;
+    // `PRAGMA cipher_memory_security` is deliberately NOT enabled. With it
+    // on, every SQLite allocation is mlock()ed/VirtualLock()ed; once the lock
+    // quota is exhausted (Windows working-set quota, ERROR 1453; small
+    // RLIMIT_MEMLOCK on Linux/Android) SQLCipher logs a warning, its logger
+    // allocates through the same locking allocator, which fails and logs
+    // again: unbounded recursion and a stack overflow. SQLCipher still wipes
+    // its own key material and codec buffers when freeing them.
     let hexkey = hex_secret(key.as_ref());
     let mut sql = Zeroizing::new(String::with_capacity(24 + hexkey.len()));
     sql.push_str("PRAGMA key = \"x'");
@@ -144,10 +151,18 @@ fn open_db(path: &Path, key: &Key, create: bool) -> Result<Connection> {
     if !create {
         flags.remove(OpenFlags::SQLITE_OPEN_CREATE);
     }
-    let conn = Connection::open_with_flags(path, flags).map_err(|e| if create { db("open")(e) } else { Error::UnlockFailed })?;
+    let conn = Connection::open_with_flags(path, flags).map_err(|e| {
+        if create {
+            db("open")(e)
+        } else {
+            Error::UnlockFailed
+        }
+    })?;
     apply_key(&conn, key)?;
-    conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0))
-        .map_err(|_| Error::UnlockFailed)?;
+    conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
+        r.get::<_, i64>(0)
+    })
+    .map_err(|_| Error::UnlockFailed)?;
     conn.execute_batch("PRAGMA secure_delete = ON; PRAGMA journal_mode = DELETE;")
         .map_err(db("configure"))?;
     Ok(conn)
@@ -170,7 +185,10 @@ fn summary(id: &[u8; 16], d: &ItemData, modified_at: i64) -> Summary {
         id: hex(id),
         kind: d.kind,
         title: d.title.clone(),
-        subtitle: d.username.clone().or_else(|| d.urls.first().and_then(|u| domain::host(u))),
+        subtitle: d
+            .username
+            .clone()
+            .or_else(|| d.urls.first().and_then(|u| domain::host(u))),
         folder: d.folder.clone(),
         tags: d.tags.clone(),
         urls: d.urls.clone(),
@@ -189,7 +207,10 @@ fn version_key(hlc: u64, modified_at: i64, d: &ItemData) -> (u64, i64, Zeroizing
 }
 
 fn newer(a: &(u64, i64, Zeroizing<Vec<u8>>), b: &(u64, i64, Zeroizing<Vec<u8>>)) -> bool {
-    (a.0, a.1).cmp(&(b.0, b.1)).then_with(|| a.2.as_slice().cmp(b.2.as_slice())).is_gt()
+    (a.0, a.1)
+        .cmp(&(b.0, b.1))
+        .then_with(|| a.2.as_slice().cmp(b.2.as_slice()))
+        .is_gt()
 }
 
 impl Vault {
@@ -197,8 +218,10 @@ impl Vault {
 
     pub fn create(path: &Path, password: &str, secret_key: &str, now: i64) -> Result<Vault> {
         ts(now)?;
-        let pw = Password::new(password).map_err(|_| Error::InvalidInput("password must not be empty"))?;
-        let sk = SecretKey::parse(secret_key).map_err(|_| Error::InvalidInput("malformed Secret Key"))?;
+        let pw = Password::new(password)
+            .map_err(|_| Error::InvalidInput("password must not be empty"))?;
+        let sk = SecretKey::parse(secret_key)
+            .map_err(|_| Error::InvalidInput("malformed Secret Key"))?;
         let hp = header_path(path);
         if path.exists() || hp.exists() {
             return Err(Error::InvalidInput("a vault already exists at this path"));
@@ -224,7 +247,11 @@ impl Vault {
     /// exits early, and every failure is `UnlockFailed`, so timing and error
     /// do not reveal how many candidates exist or match. The first match
     /// wins.
-    pub fn unlock_first_matching(paths: &[&Path], password: &str, secret_key: &str) -> Result<Vault> {
+    pub fn unlock_first_matching(
+        paths: &[&Path],
+        password: &str,
+        secret_key: &str,
+    ) -> Result<Vault> {
         if paths.is_empty() || paths.len() > MAX_DECOY_PATHS {
             return Err(Error::InvalidInput("between 1 and 8 vault paths"));
         }
@@ -239,7 +266,9 @@ impl Vault {
         };
         let mut found: Option<(usize, Key, Header)> = None;
         for (i, p) in paths.iter().enumerate() {
-            let hdr = fs::read(header_path(p)).ok().and_then(|b| Header::parse(&b));
+            let hdr = fs::read(header_path(p))
+                .ok()
+                .and_then(|b| Header::parse(&b));
             let salt = hdr.as_ref().map_or([0u8; 32], |h| *h.salt());
             let kek = keys::derive_kek(pw_ref, sk_ref, &salt).ok();
             let opened = match (&hdr, &kek) {
@@ -259,9 +288,17 @@ impl Vault {
 
     /// Biometric unlock: `blob` from [`Vault::wrap_vault_key_for_device`],
     /// opened with one ECDH in the device's secure hardware.
-    pub fn unlock_with_device_key(path: &Path, blob: &[u8], device: &dyn DeviceKey) -> Result<Vault> {
-        let header = fs::read(header_path(path)).ok().and_then(|b| Header::parse(&b)).ok_or(Error::UnlockFailed)?;
-        let key = header::unwrap_with_device(blob, &header.vault_id, device).ok_or(Error::UnlockFailed)?;
+    pub fn unlock_with_device_key(
+        path: &Path,
+        blob: &[u8],
+        device: &dyn DeviceKey,
+    ) -> Result<Vault> {
+        let header = fs::read(header_path(path))
+            .ok()
+            .and_then(|b| Header::parse(&b))
+            .ok_or(Error::UnlockFailed)?;
+        let key = header::unwrap_with_device(blob, &header.vault_id, device)
+            .ok_or(Error::UnlockFailed)?;
         let conn = open_db(path, &key, false)?;
         Ok(Vault { conn, key, header })
     }
@@ -359,7 +396,9 @@ impl Vault {
             "SELECT id, created_at, modified_at, hlc, trashed_at, data FROM items WHERE trashed_at IS NULL ORDER BY id"
         };
         let mut st = self.conn.prepare(sql).map_err(db("read items"))?;
-        let rows = st.query_map([], Self::decode_row).map_err(db("read items"))?;
+        let rows = st
+            .query_map([], Self::decode_row)
+            .map_err(db("read items"))?;
         let mut out = Vec::new();
         for r in rows {
             out.push(r.map_err(db("read items"))?.ok_or(Error::Internal)?);
@@ -386,18 +425,25 @@ impl Vault {
             .prepare("SELECT modified_at, data FROM revisions WHERE item_id = ?1 ORDER BY seq")
             .map_err(db("read history"))?;
         let rows = st
-            .query_map([&id[..]], |r| Ok((r.get::<_, i64>(0)?, codec::decode(r.get_ref(1)?.as_blob()?))))
+            .query_map([&id[..]], |r| {
+                Ok((r.get::<_, i64>(0)?, codec::decode(r.get_ref(1)?.as_blob()?)))
+            })
             .map_err(db("read history"))?;
         let mut out = Vec::new();
         for r in rows {
             let (m, d) = r.map_err(db("read history"))?;
-            out.push(Revision { modified_at: m as u64, data: d.ok_or(Error::Internal)? });
+            out.push(Revision {
+                modified_at: m as u64,
+                data: d.ok_or(Error::Internal)?,
+            });
         }
         Ok(out)
     }
 
     fn write_history(&self, id: &[u8; 16], revs: &[Revision]) -> Result<()> {
-        self.conn.execute("DELETE FROM revisions WHERE item_id = ?1", [&id[..]]).map_err(db("write history"))?;
+        self.conn
+            .execute("DELETE FROM revisions WHERE item_id = ?1", [&id[..]])
+            .map_err(db("write history"))?;
         let start = revs.len().saturating_sub(MAX_REVISIONS);
         for (seq, r) in revs[start..].iter().enumerate() {
             let blob = codec::encode(&r.data);
@@ -412,14 +458,20 @@ impl Vault {
     }
 
     fn delete_item(&self, id: &[u8; 16]) -> Result<()> {
-        self.conn.execute("DELETE FROM revisions WHERE item_id = ?1", [&id[..]]).map_err(db("delete item"))?;
-        self.conn.execute("DELETE FROM items WHERE id = ?1", [&id[..]]).map_err(db("delete item"))?;
+        self.conn
+            .execute("DELETE FROM revisions WHERE item_id = ?1", [&id[..]])
+            .map_err(db("delete item"))?;
+        self.conn
+            .execute("DELETE FROM items WHERE id = ?1", [&id[..]])
+            .map_err(db("delete item"))?;
         Ok(())
     }
 
     fn tombstone_hlc(&self, id: &[u8; 16]) -> Result<Option<u64>> {
         self.conn
-            .query_row("SELECT hlc FROM tombstones WHERE id = ?1", [&id[..]], |r| r.get::<_, i64>(0))
+            .query_row("SELECT hlc FROM tombstones WHERE id = ?1", [&id[..]], |r| {
+                r.get::<_, i64>(0)
+            })
             .optional()
             .map(|o| o.map(|v| v as u64))
             .map_err(db("read tombstone"))
@@ -453,7 +505,14 @@ impl Vault {
         keys::fill_random(&mut id).map_err(|_| Error::Internal)?;
         let tx = self.conn.unchecked_transaction().map_err(db("begin"))?;
         let hlc = self.tick(now)?;
-        self.write_row(&Row { id, created_at: now, modified_at: now, hlc, trashed_at: None, data })?;
+        self.write_row(&Row {
+            id,
+            created_at: now,
+            modified_at: now,
+            hlc,
+            trashed_at: None,
+            data,
+        })?;
         tx.commit().map_err(db("commit"))?;
         Ok(hex(&id))
     }
@@ -463,14 +522,19 @@ impl Vault {
         validate(&data)?;
         let mut row = self.live(id)?;
         if row.trashed_at.is_some() {
-            return Err(Error::InvalidInput("item is in the trash; restore it first"));
+            return Err(Error::InvalidInput(
+                "item is in the trash; restore it first",
+            ));
         }
         if row.data == data {
             return Ok(());
         }
         let tx = self.conn.unchecked_transaction().map_err(db("begin"))?;
         let mut hist = self.history_of(&row.id)?;
-        hist.push(Revision { modified_at: row.modified_at.max(0) as u64, data: row.data.clone() });
+        hist.push(Revision {
+            modified_at: row.modified_at.max(0) as u64,
+            data: row.data.clone(),
+        });
         row.data = data;
         row.modified_at = now;
         row.hlc = self.tick(now)?;
@@ -481,32 +545,54 @@ impl Vault {
 
     pub fn get_item(&self, id: &str) -> Result<ItemRecord> {
         let r = self.live(id)?;
-        Ok(ItemRecord { id: hex(&r.id), created_at: r.created_at, modified_at: r.modified_at, trashed_at: r.trashed_at, data: r.data })
+        Ok(ItemRecord {
+            id: hex(&r.id),
+            created_at: r.created_at,
+            modified_at: r.modified_at,
+            trashed_at: r.trashed_at,
+            data: r.data,
+        })
     }
 
     /// Case-insensitive substring match on title, username, URLs, tags,
     /// folder and non-concealed field names. Folder and tag filters are
     /// exact (case-insensitive). Trashed items are excluded. Sorted by title.
-    pub fn search(&self, query: &str, folder: Option<&str>, tag: Option<&str>) -> Result<Vec<Summary>> {
+    pub fn search(
+        &self,
+        query: &str,
+        folder: Option<&str>,
+        tag: Option<&str>,
+    ) -> Result<Vec<Summary>> {
         let q = Zeroizing::new(query.trim().to_lowercase());
         let mut out: Vec<Summary> = self
             .load_all(false)?
             .iter()
             .filter(|r| {
                 let d = &r.data;
-                folder.is_none_or(|f| d.folder.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(f) || x.to_lowercase() == f.to_lowercase()))
-                    && tag.is_none_or(|t| d.tags.iter().any(|x| x.to_lowercase() == t.to_lowercase()))
+                folder.is_none_or(|f| {
+                    d.folder.as_deref().is_some_and(|x| {
+                        x.eq_ignore_ascii_case(f) || x.to_lowercase() == f.to_lowercase()
+                    })
+                }) && tag
+                    .is_none_or(|t| d.tags.iter().any(|x| x.to_lowercase() == t.to_lowercase()))
                     && (q.is_empty()
                         || contains_ci(&d.title, &q)
                         || d.username.as_deref().is_some_and(|u| contains_ci(u, &q))
                         || d.urls.iter().any(|u| contains_ci(u, &q))
                         || d.tags.iter().any(|t| contains_ci(t, &q))
                         || d.folder.as_deref().is_some_and(|f| contains_ci(f, &q))
-                        || d.fields.iter().any(|f| !f.concealed && contains_ci(&f.name, &q)))
+                        || d.fields
+                            .iter()
+                            .any(|f| !f.concealed && contains_ci(&f.name, &q)))
             })
             .map(|r| summary(&r.id, &r.data, r.modified_at))
             .collect();
-        out.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()).then_with(|| a.id.cmp(&b.id)));
+        out.sort_by(|a, b| {
+            a.title
+                .to_lowercase()
+                .cmp(&b.title.to_lowercase())
+                .then_with(|| a.id.cmp(&b.id))
+        });
         Ok(out)
     }
 
@@ -520,10 +606,20 @@ impl Vault {
         let mut out: Vec<Summary> = self
             .load_all(false)?
             .iter()
-            .filter(|r| r.data.urls.iter().any(|u| domain::registrable_of(u).as_deref() == Some(want.as_str())))
+            .filter(|r| {
+                r.data
+                    .urls
+                    .iter()
+                    .any(|u| domain::registrable_of(u).as_deref() == Some(want.as_str()))
+            })
             .map(|r| summary(&r.id, &r.data, r.modified_at))
             .collect();
-        out.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()).then_with(|| a.id.cmp(&b.id)));
+        out.sort_by(|a, b| {
+            a.title
+                .to_lowercase()
+                .cmp(&b.title.to_lowercase())
+                .then_with(|| a.id.cmp(&b.id))
+        });
         Ok(out)
     }
 
@@ -533,7 +629,10 @@ impl Vault {
         let mut hist = self.history_of(&r.id)?;
         Ok(hist
             .iter_mut()
-            .map(|h| HistoryEntry { modified_at: h.modified_at as i64, data: h.data.clone() })
+            .map(|h| HistoryEntry {
+                modified_at: h.modified_at as i64,
+                data: h.data.clone(),
+            })
             .collect())
     }
 
@@ -575,7 +674,11 @@ impl Vault {
                 })
             })
             .collect();
-        out.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at).then_with(|| a.item.id.cmp(&b.item.id)));
+        out.sort_by(|a, b| {
+            b.deleted_at
+                .cmp(&a.deleted_at)
+                .then_with(|| a.item.id.cmp(&b.item.id))
+        });
         Ok(out)
     }
 
@@ -587,7 +690,9 @@ impl Vault {
         let tx = self.conn.unchecked_transaction().map_err(db("begin"))?;
         let mut n = 0;
         for r in self.load_all(true)? {
-            if r.trashed_at.is_some_and(|t| now.saturating_sub(t) >= TRASH_RETENTION_SECS) {
+            if r.trashed_at
+                .is_some_and(|t| now.saturating_sub(t) >= TRASH_RETENTION_SECS)
+            {
                 let hlc = self.tick(now)?;
                 self.delete_item(&r.id)?;
                 self.put_tombstone(&r.id, now, hlc)?;
@@ -599,18 +704,31 @@ impl Vault {
     }
 
     pub fn list_folders(&self) -> Result<Vec<String>> {
-        let set: BTreeSet<String> = self.load_all(false)?.iter().filter_map(|r| r.data.folder.clone()).collect();
+        let set: BTreeSet<String> = self
+            .load_all(false)?
+            .iter()
+            .filter_map(|r| r.data.folder.clone())
+            .collect();
         Ok(set.into_iter().collect())
     }
 
     pub fn list_tags(&self) -> Result<Vec<String>> {
-        let set: BTreeSet<String> = self.load_all(false)?.iter().flat_map(|r| r.data.tags.clone()).collect();
+        let set: BTreeSet<String> = self
+            .load_all(false)?
+            .iter()
+            .flat_map(|r| r.data.tags.clone())
+            .collect();
         Ok(set.into_iter().collect())
     }
 
     pub fn item_totp(&self, id: &str, now: i64) -> Result<TotpCode> {
         let r = self.live(id)?;
-        let t = r.data.totp.as_deref().filter(|t| !t.trim().is_empty()).ok_or(Error::NotFound)?;
+        let t = r
+            .data
+            .totp
+            .as_deref()
+            .filter(|t| !t.trim().is_empty())
+            .ok_or(Error::NotFound)?;
         totp::totp_code(t, now)
     }
 
@@ -627,7 +745,13 @@ impl Vault {
             .iter()
             .zip(&hists)
             .zip(&ids)
-            .map(|((r, h), id)| AuditItem { id, data: &r.data, created_at: r.created_at, modified_at: r.modified_at, history: h })
+            .map(|((r, h), id)| AuditItem {
+                id,
+                data: &r.data,
+                created_at: r.created_at,
+                modified_at: r.modified_at,
+                history: h,
+            })
             .collect();
         Ok(audit::health(&items, now))
     }
@@ -677,29 +801,55 @@ impl Vault {
                 trashed_at: r.trashed_at.map(|t| t.max(0) as u64),
             });
         }
-        let mut st = self.conn.prepare("SELECT id, deleted_at, hlc FROM tombstones ORDER BY id").map_err(db("read tombstones"))?;
+        let mut st = self
+            .conn
+            .prepare("SELECT id, deleted_at, hlc FROM tombstones ORDER BY id")
+            .map_err(db("read tombstones"))?;
         let rows = st
-            .query_map([], |r| Ok((r.get::<_, Vec<u8>>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)))
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, Vec<u8>>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, i64>(2)?,
+                ))
+            })
             .map_err(db("read tombstones"))?;
         let mut tombstones = Vec::new();
         for t in rows {
             let (id, d, h) = t.map_err(db("read tombstones"))?;
-            tombstones.push(Tombstone { id: id.try_into().map_err(|_| Error::Internal)?, deleted_at: d.max(0) as u64, hlc: h as u64 });
+            tombstones.push(Tombstone {
+                id: id.try_into().map_err(|_| Error::Internal)?,
+                deleted_at: d.max(0) as u64,
+                hlc: h as u64,
+            });
         }
-        Ok(Payload { exported_at: now as u64, items, tombstones })
+        Ok(Payload {
+            exported_at: now as u64,
+            items,
+            tombstones,
+        })
     }
 
     /// Exports the whole store (live and trashed items, history,
     /// tombstones). The password slot uses this vault's own master password
     /// and Secret Key, which are verified first (`UnlockFailed` otherwise).
-    pub fn export_vtf(&self, password: &str, secret_key: &str, device_recipients: &[Vec<u8>], now: i64) -> Result<Vec<u8>> {
+    pub fn export_vtf(
+        &self,
+        password: &str,
+        secret_key: &str,
+        device_recipients: &[Vec<u8>],
+        now: i64,
+    ) -> Result<Vec<u8>> {
         ts(now)?;
         if device_recipients.len() > MAX_DEVICE_RECIPIENTS {
             return Err(Error::InvalidInput("at most 15 device recipients"));
         }
         let mut pks = Vec::with_capacity(device_recipients.len());
         for r in device_recipients {
-            let pk: [u8; PUBLIC_KEY_LEN] = r.as_slice().try_into().map_err(|_| Error::InvalidInput("device public key must be 65 bytes"))?;
+            let pk: [u8; PUBLIC_KEY_LEN] = r
+                .as_slice()
+                .try_into()
+                .map_err(|_| Error::InvalidInput("device public key must be 65 bytes"))?;
             vtf_core::device::validate_public_key(&pk)?;
             pks.push(pk);
         }
@@ -707,10 +857,23 @@ impl Vault {
         let sk = SecretKey::parse(secret_key).map_err(|_| Error::UnlockFailed)?;
         self.verify_credentials(&pw, &sk)?;
         let payload = self.to_payload(now)?;
-        Ok(vtf_core::export(&payload, Some(PasswordCredentials { password: &pw, secret_key: &sk }), &pks)?)
+        Ok(vtf_core::export(
+            &payload,
+            Some(PasswordCredentials {
+                password: &pw,
+                secret_key: &sk,
+            }),
+            &pks,
+        )?)
     }
 
-    pub fn import_vtf(&mut self, file: &[u8], password: &str, secret_key: &str, now: i64) -> Result<ImportSummary> {
+    pub fn import_vtf(
+        &mut self,
+        file: &[u8],
+        password: &str,
+        secret_key: &str,
+        now: i64,
+    ) -> Result<ImportSummary> {
         ts(now)?;
         let pw = Password::new(password).map_err(|_| Error::UnlockFailed)?;
         let sk = SecretKey::parse(secret_key).map_err(|_| Error::UnlockFailed)?;
@@ -718,7 +881,12 @@ impl Vault {
         self.merge(payload)
     }
 
-    pub fn import_vtf_with_device_key(&mut self, file: &[u8], device: &dyn DeviceKey, now: i64) -> Result<ImportSummary> {
+    pub fn import_vtf_with_device_key(
+        &mut self,
+        file: &[u8],
+        device: &dyn DeviceKey,
+        now: i64,
+    ) -> Result<ImportSummary> {
         ts(now)?;
         let payload = vtf_core::import_with_device(file, device)?;
         self.merge(payload)
@@ -770,7 +938,9 @@ impl Vault {
                     continue;
                 }
                 // Edited elsewhere after this device deleted it: resurrect.
-                self.conn.execute("DELETE FROM tombstones WHERE id = ?1", [&it.id[..]]).map_err(db("delete tombstone"))?;
+                self.conn
+                    .execute("DELETE FROM tombstones WHERE id = ?1", [&it.id[..]])
+                    .map_err(db("delete tombstone"))?;
                 self.write_row(&remote_row())?;
                 self.write_history(&it.id, &it.history)?;
                 s.added += 1;
@@ -788,20 +958,39 @@ impl Vault {
             let rk = version_key(it.hlc, it.modified_at.min(i64::MAX as u64) as i64, &it.data);
             let remote_wins = newer(&rk, &lk);
             let (win_data, win_hist, lose_data, lose_modified, lose_hist) = if remote_wins {
-                (&it.data, &it.history, &local.data, local.modified_at.max(0) as u64, &local_hist)
+                (
+                    &it.data,
+                    &it.history,
+                    &local.data,
+                    local.modified_at.max(0) as u64,
+                    &local_hist,
+                )
             } else {
-                (&local.data, &local_hist, &it.data, it.modified_at, &it.history)
+                (
+                    &local.data,
+                    &local_hist,
+                    &it.data,
+                    it.modified_at,
+                    &it.history,
+                )
             };
             let diverged = win_data != lose_data && !win_hist.iter().any(|r| r.data == *lose_data);
 
-            let mut merged: Vec<Revision> = Vec::with_capacity(win_hist.len() + lose_hist.len() + 1);
+            let mut merged: Vec<Revision> =
+                Vec::with_capacity(win_hist.len() + lose_hist.len() + 1);
             for r in win_hist.iter().chain(lose_hist.iter()) {
-                if !merged.iter().any(|m| m.modified_at == r.modified_at && m.data == r.data) {
+                if !merged
+                    .iter()
+                    .any(|m| m.modified_at == r.modified_at && m.data == r.data)
+                {
                     merged.push(r.clone());
                 }
             }
             if diverged && !merged.iter().any(|m| m.data == *lose_data) {
-                merged.push(Revision { modified_at: lose_modified, data: lose_data.clone() });
+                merged.push(Revision {
+                    modified_at: lose_modified,
+                    data: lose_data.clone(),
+                });
             }
             merged.sort_by_key(|r| r.modified_at);
             let keep = merged.len().saturating_sub(MAX_REVISIONS);
@@ -811,7 +1000,10 @@ impl Vault {
                 s.conflicts += 1;
             }
             let hist_changed = merged.len() != local_hist.len()
-                || merged.iter().zip(&local_hist).any(|(a, b)| a.modified_at != b.modified_at || a.data != b.data);
+                || merged
+                    .iter()
+                    .zip(&local_hist)
+                    .any(|(a, b)| a.modified_at != b.modified_at || a.data != b.data);
             if remote_wins {
                 let mut row = remote_row();
                 row.created_at = row.created_at.min(local.created_at);
@@ -859,7 +1051,14 @@ impl Vault {
             let mut id = [0u8; 16];
             keys::fill_random(&mut id).map_err(|_| Error::Internal)?;
             let hlc = self.tick(now)?;
-            self.write_row(&Row { id, created_at: now, modified_at: now, hlc, trashed_at: None, data })?;
+            self.write_row(&Row {
+                id,
+                created_at: now,
+                modified_at: now,
+                hlc,
+                trashed_at: None,
+                data,
+            })?;
             s.added += 1;
         }
         tx.commit().map_err(db("commit"))?;
@@ -881,10 +1080,13 @@ impl Vault {
             let mut dst = Connection::open(path).map_err(db("open backup"))?;
             apply_key(&dst, &self.key)?;
             {
-                let b = rusqlite::backup::Backup::new(&self.conn, &mut dst).map_err(db("backup"))?;
-                b.run_to_completion(256, Duration::ZERO, None).map_err(db("backup"))?;
+                let b =
+                    rusqlite::backup::Backup::new(&self.conn, &mut dst).map_err(db("backup"))?;
+                b.run_to_completion(256, Duration::ZERO, None)
+                    .map_err(db("backup"))?;
             }
-            dst.query_row("SELECT count(*) FROM items", [], |r| r.get::<_, i64>(0)).map_err(db("verify backup"))?;
+            dst.query_row("SELECT count(*) FROM items", [], |r| r.get::<_, i64>(0))
+                .map_err(db("verify backup"))?;
             drop(dst);
             write_atomic(&hp, &self.header.to_bytes())
         })();

@@ -13,7 +13,11 @@ const EFF_LARGE: &str = include_str!("../data/eff_large_wordlist.txt");
 pub fn wordlist() -> &'static [&'static str] {
     static WORDS: OnceLock<Vec<&'static str>> = OnceLock::new();
     WORDS.get_or_init(|| {
-        let w: Vec<&str> = EFF_LARGE.lines().filter_map(|l| l.split('\t').nth(1)).map(str::trim).collect();
+        let w: Vec<&str> = EFF_LARGE
+            .lines()
+            .filter_map(|l| l.split('\t').nth(1))
+            .map(str::trim)
+            .collect();
         assert_eq!(w.len(), 7776, "embedded EFF wordlist is incomplete");
         w
     })
@@ -68,18 +72,27 @@ pub fn generate_password(p: &PasswordPolicy) -> Result<Zeroizing<String>> {
         return Err(Error::InvalidInput("password length must be 4 to 128"));
     }
     let keep = |set: &str| -> Vec<u8> {
-        set.bytes().filter(|c| !(p.avoid_ambiguous && AMBIGUOUS.as_bytes().contains(c))).collect()
+        set.bytes()
+            .filter(|c| !(p.avoid_ambiguous && AMBIGUOUS.as_bytes().contains(c)))
+            .collect()
     };
-    let classes: Vec<Vec<u8>> = [(p.lowercase, LOWER), (p.uppercase, UPPER), (p.digits, DIGITS), (p.symbols, SYMBOLS)]
-        .into_iter()
-        .filter(|(on, _)| *on)
-        .map(|(_, s)| keep(s))
-        .collect();
+    let classes: Vec<Vec<u8>> = [
+        (p.lowercase, LOWER),
+        (p.uppercase, UPPER),
+        (p.digits, DIGITS),
+        (p.symbols, SYMBOLS),
+    ]
+    .into_iter()
+    .filter(|(on, _)| *on)
+    .map(|(_, s)| keep(s))
+    .collect();
     if classes.is_empty() {
         return Err(Error::InvalidInput("select at least one character class"));
     }
     if usize::from(p.length) < classes.len() {
-        return Err(Error::InvalidInput("length is shorter than the number of character classes"));
+        return Err(Error::InvalidInput(
+            "length is shorter than the number of character classes",
+        ));
     }
     let alphabet: Vec<u8> = classes.concat();
     // Draw the whole password uniformly from the alphabet and reject any
@@ -106,7 +119,11 @@ pub fn generate_passphrase(p: &PassphrasePolicy) -> Result<Zeroizing<String>> {
     }
     let words = wordlist();
     let n = usize::from(p.words);
-    let number_at = if p.include_number { Some(uniform(u32::from(p.words))? as usize) } else { None };
+    let number_at = if p.include_number {
+        Some(uniform(u32::from(p.words))? as usize)
+    } else {
+        None
+    };
     let cap = n * (9 + 1 + p.separator.len()) + 1;
     let mut out = Zeroizing::new(String::with_capacity(cap));
     for i in 0..n {
@@ -140,7 +157,14 @@ mod tests {
     use super::*;
 
     fn pol(length: u8) -> PasswordPolicy {
-        PasswordPolicy { length, lowercase: true, uppercase: true, digits: true, symbols: true, avoid_ambiguous: false }
+        PasswordPolicy {
+            length,
+            lowercase: true,
+            uppercase: true,
+            digits: true,
+            symbols: true,
+            avoid_ambiguous: false,
+        }
     }
 
     #[test]
@@ -185,24 +209,56 @@ mod tests {
             assert!(!pw.chars().any(|c| AMBIGUOUS.contains(c)));
             assert!(pw.chars().all(|c| c.is_ascii_alphanumeric()));
         }
-        let digits_only = PasswordPolicy { length: 6, lowercase: false, uppercase: false, digits: true, symbols: false, avoid_ambiguous: false };
-        assert!(generate_password(&digits_only).unwrap().chars().all(|c| c.is_ascii_digit()));
+        let digits_only = PasswordPolicy {
+            length: 6,
+            lowercase: false,
+            uppercase: false,
+            digits: true,
+            symbols: false,
+            avoid_ambiguous: false,
+        };
+        assert!(generate_password(&digits_only)
+            .unwrap()
+            .chars()
+            .all(|c| c.is_ascii_digit()));
         assert!(generate_password(&pol(3)).is_err());
         assert!(generate_password(&pol(129)).is_err());
-        let none = PasswordPolicy { length: 10, lowercase: false, uppercase: false, digits: false, symbols: false, avoid_ambiguous: false };
+        let none = PasswordPolicy {
+            length: 10,
+            lowercase: false,
+            uppercase: false,
+            digits: false,
+            symbols: false,
+            avoid_ambiguous: false,
+        };
         assert!(generate_password(&none).is_err());
-        assert_ne!(*generate_password(&pol(20)).unwrap(), *generate_password(&pol(20)).unwrap());
+        assert_ne!(
+            *generate_password(&pol(20)).unwrap(),
+            *generate_password(&pol(20)).unwrap()
+        );
     }
 
     #[test]
     fn passphrase_respects_policy() {
-        let p = PassphrasePolicy { words: 6, separator: "-".into(), capitalize: true, include_number: true };
+        let p = PassphrasePolicy {
+            words: 6,
+            separator: "-".into(),
+            capitalize: true,
+            include_number: true,
+        };
         let s = generate_passphrase(&p).unwrap();
         let parts: Vec<&str> = s.split('-').collect();
         assert_eq!(parts.len(), 6);
-        assert!(parts.iter().all(|w| w.chars().next().unwrap().is_uppercase()));
+        assert!(parts
+            .iter()
+            .all(|w| w.chars().next().unwrap().is_uppercase()));
         assert_eq!(s.chars().filter(|c| c.is_ascii_digit()).count(), 1);
-        let plain = PassphrasePolicy { words: 4, separator: " ".into(), capitalize: false, include_number: false };
+        let plain = PassphrasePolicy {
+            words: 4,
+            separator: " ".into(),
+            capitalize: false,
+            include_number: false,
+        };
         let s = generate_passphrase(&plain).unwrap();
         assert!(s.split(' ').all(|w| wordlist().contains(&w)));
         assert!(generate_passphrase(&PassphrasePolicy { words: 2, ..plain }).is_err());

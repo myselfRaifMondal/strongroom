@@ -51,13 +51,24 @@ fn password_set_at(it: &AuditItem<'_>, pw: &str) -> i64 {
 pub fn health(items: &[AuditItem<'_>], now: i64) -> HealthReport {
     let with_pw: Vec<(&AuditItem<'_>, &str)> = items
         .iter()
-        .filter_map(|it| it.data.password.as_deref().filter(|p| !p.is_empty()).map(|p| (it, p)))
+        .filter_map(|it| {
+            it.data
+                .password
+                .as_deref()
+                .filter(|p| !p.is_empty())
+                .map(|p| (it, p))
+        })
         .collect();
     let mut by_pw: HashMap<&str, usize> = HashMap::new();
     for (_, p) in &with_pw {
         *by_pw.entry(p).or_default() += 1;
     }
-    let mut r = HealthReport { security_score: 100, reused_item_ids: vec![], weak_item_ids: vec![], old_item_ids: vec![] };
+    let mut r = HealthReport {
+        security_score: 100,
+        reused_item_ids: vec![],
+        weak_item_ids: vec![],
+        old_item_ids: vec![],
+    };
     let mut clean = 0usize;
     for (it, p) in &with_pw {
         let reused = by_pw[p] > 1;

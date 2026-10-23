@@ -24,14 +24,19 @@ pub fn fingerprint(pk: &[u8]) -> String {
 pub fn parse(payload: &str) -> Result<([u8; PUBLIC_KEY_LEN], String)> {
     let bad = Error::InvalidInput("not a Strongroom pairing code");
     let t = payload.trim();
-    let body = t.get(..PREFIX.len()).filter(|p| p.eq_ignore_ascii_case(PREFIX)).map(|_| &t[PREFIX.len()..]).ok_or(bad.clone())?;
+    let body = t
+        .get(..PREFIX.len())
+        .filter(|p| p.eq_ignore_ascii_case(PREFIX))
+        .map(|_| &t[PREFIX.len()..])
+        .ok_or(bad.clone())?;
     let bytes = base32_decode(body).ok_or(bad.clone())?;
     let pk: [u8; PUBLIC_KEY_LEN] = bytes.as_slice().try_into().map_err(|_| bad.clone())?;
     // Canonical encoding only: re-encoding must give the same text.
     if !base32(&pk).eq_ignore_ascii_case(body) {
         return Err(bad);
     }
-    validate_public_key(&pk).map_err(|_| Error::InvalidInput("pairing code does not hold a valid P-256 key"))?;
+    validate_public_key(&pk)
+        .map_err(|_| Error::InvalidInput("pairing code does not hold a valid P-256 key"))?;
     let fp = fingerprint(&pk);
     Ok((pk, fp))
 }
