@@ -51,3 +51,45 @@ exported values) and against the `hpke` crate for the VTF ciphersuite.
 - `ciborium` is not used at runtime: VTF1 needs exact rejection of
   non-canonical encodings and must not leave unzeroized plaintext copies, so
   vtf-core has a small strict decoder/encoder; ciborium cross-checks it.
+
+## OQ-W1 Windows Hello gating of the TPM device key
+Windows Hello's own key store (Microsoft Passport KSP / `KeyCredentialManager`)
+creates RSA signing keys only, so it cannot host the P-256 ECDH key that
+`DeviceKeyAgreement` needs. Default: the device key is created in the
+Microsoft Platform Crypto Provider (TPM) as `ECDH_P256`, export policy 0
+(non-exportable), usage `NCRYPT_ALLOW_KEY_AGREEMENT_FLAG` only, and every
+`agree()` is preceded by a Windows Hello verification
+(`UserConsentVerifierInterop.RequestVerificationForWindowAsync`). The Hello
+gate is therefore enforced by the Strongroom process, not by the TPM.
+`CngDeviceKey.Create` can additionally set `NCRYPT_UI_POLICY`
+(`NCRYPT_UI_PROTECT_KEY_FLAG`), but on the PCP that adds a separate
+TPM-key password/consent prompt rather than Hello, so it is off by default.
+Owner decision needed if TPM-enforced gating is required.
+`NCryptDeriveKey(BCRYPT_KDF_RAW_SECRET)` returns the x-coordinate
+little-endian; it is reversed to big-endian before returning to the core.
+
+## OQ-W2 No TPM on CI; hardware path unverified
+There is no Windows dev machine; the app is built and run only on GitHub
+Actions `windows-latest`. See the `probe` step of the windows workflow for
+what the runner offers. Where the PCP cannot create a P-256 key, Windows
+Hello unlock and device-bound export are disabled and the UI says so;
+password unlock is unaffected. The NCrypt code path is exercised on CI with
+the Microsoft Software KSP (identical calls, checked against .NET's ECDH),
+but the TPM-backed path and the Hello prompt have not run on real hardware.
+
+## OQ-W3 Hello enrollment-change signal on Windows
+Desktop apps have no API to observe changes to the Windows Hello enrollment
+set. Default: `enrollment_changed` is passed as `false`; the reboot,
+5-failure and 7-day password checks still apply. Reboot is detected by
+comparing the boot time recorded at the last password unlock.
+
+## OQ-W4 HIBP opt-in on Windows
+Out of scope for Phase 2 on Windows. The Windows app and CLI make no
+network calls.
+
+## OQ-W5 Auto-type limits
+Auto-type uses `SendInput` (Unicode key events) only after the user has
+seen the previously focused window's title and process and confirmed;
+each confirmation is single-use and typing aborts if that exact window
+cannot be brought back to the foreground. Windows UIPI blocks input into
+elevated windows; the user is told when this happens.
