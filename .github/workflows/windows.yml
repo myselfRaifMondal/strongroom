@@ -40,6 +40,9 @@ jobs:
           - target: aarch64-pc-windows-msvc
             rid: win-arm64
     steps:
+      # Keep LF line endings: vectors/manifest.json and other fixtures are
+      # compared byte-for-byte (the repo has no .gitattributes).
+      - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - name: Rust toolchain
         run: |
@@ -69,6 +72,9 @@ jobs:
     runs-on: windows-latest
     continue-on-error: true
     steps:
+      # Keep LF line endings: vectors/manifest.json and other fixtures are
+      # compared byte-for-byte (the repo has no .gitattributes).
+      - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
         with:
@@ -76,12 +82,15 @@ jobs:
       - name: cargo test --workspace --release
         env:
           RUST_BACKTRACE: "1"
-        run: cargo test --workspace --release
+        run: cargo test --workspace --release --no-fail-fast
 
   bindings:
     name: C# bindings (uniffi-bindgen-cs)
     runs-on: windows-latest
     steps:
+      # Keep LF line endings: vectors/manifest.json and other fixtures are
+      # compared byte-for-byte (the repo has no .gitattributes).
+      - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - name: Cache uniffi-bindgen-cs
         id: cache-bindgen
@@ -110,6 +119,9 @@ jobs:
       # On the integration branch an Unsupported result is a failure.
       STRONGROOM_REQUIRE_CORE: ${{ github.ref_name == 'phase2/windows-with-core' && '1' || '0' }}
     steps:
+      # Keep LF line endings: vectors/manifest.json and other fixtures are
+      # compared byte-for-byte (the repo has no .gitattributes).
+      - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
