@@ -90,8 +90,11 @@ jobs:
         run: fuzz/seed_corpus.sh
       - name: cargo fuzz run
         working-directory: fuzz
+        # The prebuilt cargo-fuzz is a musl binary and would default to its
+        # own triple (ASan cannot link static musl), so name the target.
         run: >-
-          cargo +nightly fuzz run ${{ matrix.target }} corpus/${{ matrix.target }} --
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu
+          ${{ matrix.target }} corpus/${{ matrix.target }} --
           -max_total_time=60 -rss_limit_mb=2048 -print_final_stats=1
       - name: keep crash inputs
         if: failure()
@@ -109,10 +112,13 @@ jobs:
       - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
         with:
           tool: cargo-audit
+      # Vulnerabilities, unsound and yanked crates fail the build;
+      # "unmaintained" notices are printed but do not fail it (currently
+      # basic-toml via uniffi's build-time tooling, RUSTSEC-2026-0374).
       - name: audit workspace lockfile
-        run: cargo audit --deny warnings --file Cargo.lock
+        run: cargo audit --deny unsound --deny yanked --file Cargo.lock
       - name: audit fuzz lockfile
-        run: cargo audit --deny warnings --file fuzz/Cargo.lock
+        run: cargo audit --deny unsound --deny yanked --file fuzz/Cargo.lock
 
   cross-apple:
     name: build ${{ matrix.target }}

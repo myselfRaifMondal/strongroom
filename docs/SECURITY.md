@@ -66,7 +66,7 @@ OQ-8 for the current exceptions).
 | Independent Python reference written from the spec (`argon2-cffi` + `cryptography` only); reproduces and opens every positive vector, rejects every negative one; KATs for HChaCha20, XChaCha20-Poly1305 and RFC 9180 A.3.1 | `reference/` | yes |
 | Property tests (deterministic generator): payload round trips, single-byte mutation rejection, chunk reorder/duplicate/delete/truncate rejection | `crates/vtf-core/tests/properties.rs` | yes |
 | Fuzzing (cargo-fuzz/libFuzzer + ASan): header/slot parser and device unlock, tampered-chunk decryption, CBOR/payload decoder | `fuzz/` | 60 s smoke per target |
-| Dependency advisories | `cargo audit` on `Cargo.lock` and `fuzz/Cargo.lock` | yes, warnings fail |
+| Dependency advisories | `cargo audit` on `Cargo.lock` and `fuzz/Cargo.lock` | yes; vulnerable, unsound or yanked crates fail, unmaintained ones are reported |
 | Lints | `cargo fmt --check`, `cargo clippy -D warnings` | yes |
 
 ## Out of scope
