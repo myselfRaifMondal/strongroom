@@ -3,6 +3,15 @@ using Strongroom.Core.Native;
 
 namespace Strongroom.Core.Security;
 
+/// <summary>CNG key storage provider names.</summary>
+public static class KeyProviders
+{
+    /// <summary>TPM-backed; the only provider used for real device keys.</summary>
+    public const string PlatformTpm = NCrypt.MS_PLATFORM_CRYPTO_PROVIDER;
+    /// <summary>Software KSP; diagnostics and tests only.</summary>
+    public const string Software = NCrypt.MS_KEY_STORAGE_PROVIDER;
+}
+
 /// <summary>Pure byte-layout helpers for P-256 keys moving between CNG and the core.</summary>
 public static class EcP256
 {

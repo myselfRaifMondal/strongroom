@@ -10,7 +10,6 @@
 // (FFI bodies not implemented yet).
 
 using System.Text;
-using Strongroom.Core.Native;
 using Strongroom.Core.Security;
 using Strongroom.Core.Services;
 using Strongroom.Ffi;
@@ -255,13 +254,13 @@ internal static class Program
             return ExitFail;
         }
 
-        foreach (var provider in new[] { NCrypt.MS_PLATFORM_CRYPTO_PROVIDER, NCrypt.MS_KEY_STORAGE_PROVIDER })
+        foreach (var provider in new[] { KeyProviders.PlatformTpm, KeyProviders.Software })
         {
             var r = DeviceKeyProbe.Run(provider);
             Console.WriteLine($"CNG [{r.Provider}]: provider={(r.ProviderOpened ? "yes" : "no")} p256-key={(r.KeyCreated ? "yes" : "no")} " +
                               $"ecdh-matches-dotnet={(r.AgreementMatches ? "yes" : "no")} :: {r.Detail}");
         }
-        var tpm = DeviceKeyProbe.Run(NCrypt.MS_PLATFORM_CRYPTO_PROVIDER);
+        var tpm = DeviceKeyProbe.Run(KeyProviders.PlatformTpm);
         Console.WriteLine(tpm.AgreementMatches
             ? "DEVICE UNLOCK: available (TPM P-256 key agreement works)"
             : "DEVICE UNLOCK: unavailable on this machine -> Windows Hello unlock and device-bound export are disabled; password unlock only");
