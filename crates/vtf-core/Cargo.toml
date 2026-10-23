@@ -4,6 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+rust-version.workspace = true
 description = "Vault Transfer Format (VTF) v1: frozen encrypted transfer file format"
 
 [dependencies]
@@ -15,6 +16,10 @@ hpke = { version = "0.14", default-features = false, features = ["nistp", "chach
 zeroize = { version = "1.8", features = ["derive"] }
 subtle = "2.6"
 unicode-normalization = { version = "0.1", default-features = false }
+
+[lints.rust]
+# `cfg(fuzzing)` is set by cargo-fuzz (fuzz/); it gates one doc(hidden) hook.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }
 
 [dev-dependencies]
 # Test oracles only; never linked into shipped code.

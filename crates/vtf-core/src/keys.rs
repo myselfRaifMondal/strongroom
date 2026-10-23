@@ -101,7 +101,12 @@ impl SecretKey {
     pub fn parse(display: &str) -> Result<Self> {
         let invalid = Error::InvalidInput("malformed secret key");
         let mut compact = Zeroizing::new(String::with_capacity(display.len()));
-        compact.extend(display.chars().filter(|c| !c.is_whitespace()).map(|c| c.to_ascii_uppercase()));
+        compact.extend(
+            display
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .map(|c| c.to_ascii_uppercase()),
+        );
         let body = compact.strip_prefix("SR1-").ok_or(invalid)?;
         let mut acc: u32 = 0;
         let mut bits = 0u32;
@@ -153,7 +158,8 @@ pub fn fill_random(buf: &mut [u8]) -> Result<()> {
 pub fn hkdf32(ikm: &[u8], salt: &[u8], info: &[u8]) -> Key {
     let hk = Hkdf::<Sha256>::new(Some(salt), ikm);
     let mut okm = Zeroizing::new([0u8; KEY_LEN]);
-    hk.expand(info, okm.as_mut()).expect("32 bytes is a valid HKDF-SHA-256 length");
+    hk.expand(info, okm.as_mut())
+        .expect("32 bytes is a valid HKDF-SHA-256 length");
     okm
 }
 
@@ -180,7 +186,12 @@ pub fn seal(key: &[u8; KEY_LEN], nonce: &[u8; NONCE_LEN], aad: &[u8], pt: &[u8])
 }
 
 /// XChaCha20-Poly1305 open. Tag verification is constant-time (RustCrypto).
-pub fn open(key: &[u8; KEY_LEN], nonce: &[u8; NONCE_LEN], aad: &[u8], ct: &[u8]) -> Option<Zeroizing<Vec<u8>>> {
+pub fn open(
+    key: &[u8; KEY_LEN],
+    nonce: &[u8; NONCE_LEN],
+    aad: &[u8],
+    ct: &[u8],
+) -> Option<Zeroizing<Vec<u8>>> {
     let cipher = XChaCha20Poly1305::new(key.into());
     cipher
         .decrypt(&XNonce::from(*nonce), Payload { msg: ct, aad })
@@ -189,7 +200,12 @@ pub fn open(key: &[u8; KEY_LEN], nonce: &[u8; NONCE_LEN], aad: &[u8], ct: &[u8])
 }
 
 /// In-place variant used for 64 KiB chunks to avoid extra plaintext copies.
-pub fn open_in_place(key: &[u8; KEY_LEN], nonce: &[u8; NONCE_LEN], aad: &[u8], buf: &mut [u8]) -> bool {
+pub fn open_in_place(
+    key: &[u8; KEY_LEN],
+    nonce: &[u8; NONCE_LEN],
+    aad: &[u8],
+    buf: &mut [u8],
+) -> bool {
     use chacha20poly1305::aead::AeadInOut;
     if buf.len() < TAG_LEN {
         return false;

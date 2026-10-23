@@ -1,0 +1,187 @@
+# Rust core assurance: lint, tests (incl. the VTF1 vector suite), the
+# independent Python reference, fuzz smoke, dependency audit, and
+# cross-compilation of the Rust crates for every shipping target.
+# Platform app builds live in their own workflows (android.yml, windows.yml,
+# apple.yml) and are not duplicated here.
+name: rust
+
+on:
+  push:
+    branches: [main, "phase*/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUST_BACKTRACE: "1"
+
+jobs:
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      # strongroom-ffi is not yet rustfmt-clean and is owned by another
+      # workstream; switch this to `cargo fmt --all --check` once it is.
+      - name: cargo fmt --check
+        run: |
+          cargo fmt -p vtf-core -p vault-core --check
+          cargo fmt --manifest-path fuzz/Cargo.toml --check
+      - name: cargo clippy -D warnings
+        run: cargo clippy -p vtf-core -p vault-core --all-targets --locked -- -D warnings
+      # uniffi 0.31's generated scaffolding (included by strongroom-ffi) trips
+      # clippy::large_const_arrays on current stable. The proper fix is an
+      # allow at strongroom-ffi's include_scaffolding! site (FFI owner); until
+      # then only that one lint is relaxed, and only for this crate.
+      - name: cargo clippy -D warnings (strongroom-ffi)
+        run: cargo clippy -p strongroom-ffi --all-targets --locked -- -D warnings -A clippy::large_const_arrays
+
+  test:
+    name: cargo test --workspace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: cargo test (includes the VTF1 vector suite and property tests)
+        run: cargo test --workspace --locked
+
+  reference:
+    name: python reference vs vectors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - name: reference unit tests and KATs
+        working-directory: reference
+        run: uv run --locked --group dev pytest -q
+      - name: verify every vector (sequential; Argon2id 256 MiB per derivation)
+        working-directory: reference
+        run: uv run --locked python -m vtf_ref.verify vectors/
+
+  fuzz:
+    name: fuzz smoke (${{ matrix.target }}, 60 s)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [container_parse, chunk_decrypt, payload_decode]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: fuzz
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
+        with:
+          tool: cargo-fuzz
+      - name: seed corpus from vectors/
+        run: fuzz/seed_corpus.sh
+      - name: cargo fuzz run
+        working-directory: fuzz
+        # The prebuilt cargo-fuzz is a musl binary and would default to its
+        # own triple (ASan cannot link static musl), so name the target.
+        run: >-
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu
+          ${{ matrix.target }} corpus/${{ matrix.target }} --
+          -max_total_time=60 -rss_limit_mb=2048 -print_final_stats=1
+      - name: keep crash inputs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
+        with:
+          tool: cargo-audit
+      # Vulnerabilities, unsound and yanked crates fail the build;
+      # "unmaintained" notices are printed but do not fail it (currently
+      # basic-toml via uniffi's build-time tooling, RUSTSEC-2026-0374).
+      - name: audit workspace lockfile
+        run: cargo audit --deny unsound --deny yanked --file Cargo.lock
+      - name: audit fuzz lockfile
+        run: cargo audit --deny unsound --deny yanked --file fuzz/Cargo.lock
+
+  cross-apple:
+    name: build ${{ matrix.target }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+          - aarch64-apple-ios
+          - aarch64-apple-ios-sim
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: ${{ matrix.target }}
+      - run: cargo build --workspace --locked --target ${{ matrix.target }}
+
+  cross-android:
+    name: build android (cargo-ndk)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android, x86_64-linux-android
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: android
+      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
+        with:
+          tool: cargo-ndk
+      - name: cargo ndk build (arm64-v8a, x86_64)
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          cargo ndk -t arm64-v8a -t x86_64 build --workspace --locked
+
+  cross-windows:
+    name: build ${{ matrix.target }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: ${{ matrix.target }}
+      - run: cargo build --workspace --locked --target ${{ matrix.target }}

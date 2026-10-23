@@ -1,0 +1,45 @@
+[package]
+name = "vtf-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+license = "UNLICENSED"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Standalone workspace: the fuzz crate is never part of the product build.
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+vtf-core = { path = "../crates/vtf-core" }
+# Software P-256 ECDH standing in for the hardware DeviceKey (test only; the
+# same crate/version vtf-core already uses as a dev-dependency oracle).
+p256 = { version = "0.14", default-features = false, features = ["ecdh", "arithmetic"] }
+zeroize = "1.8"
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "container_parse"
+path = "fuzz_targets/container_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "chunk_decrypt"
+path = "fuzz_targets/chunk_decrypt.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "payload_decode"
+path = "fuzz_targets/payload_decode.rs"
+test = false
+doc = false
+bench = false
