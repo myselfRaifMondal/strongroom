@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Strongroom.App.Pages.ItemEditPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer>
+        <StackPanel MaxWidth="640" Margin="24" Spacing="12" HorizontalAlignment="Left">
+            <TextBlock x:Name="Heading" Text="New item" Style="{StaticResource TitleTextBlockStyle}" />
+            <ComboBox x:Name="Kind" Header="Type" MinWidth="200" />
+            <TextBox x:Name="TitleBox" Header="Title" />
+            <TextBox x:Name="Username" Header="Username" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <PasswordBox x:Name="Password" Header="Password" Width="360" PasswordRevealMode="Peek" PasswordChanged="OnPasswordChanged" />
+                <Button Content="Generate" VerticalAlignment="Bottom" Click="OnGenerate" />
+            </StackPanel>
+            <TextBlock x:Name="Strength" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBox x:Name="Urls" Header="Websites (one per line)" AcceptsReturn="True" MinHeight="64" />
+            <PasswordBox x:Name="Totp" Header="One-time password secret (base32 or otpauth:// URI)" />
+            <TextBox x:Name="Folder" Header="Folder" />
+            <TextBox x:Name="Tags" Header="Tags (comma separated)" />
+            <TextBox x:Name="Notes" Header="Notes" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="96" />
+            <CheckBox x:Name="TravelSafe" Content="Safe for travel (kept on this device when travel mode is on)" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Save" Style="{StaticResource AccentButtonStyle}" Click="OnSave" />
+                <Button Content="Cancel" Click="OnCancel" />
+            </StackPanel>
+            <TextBlock x:Name="Error" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

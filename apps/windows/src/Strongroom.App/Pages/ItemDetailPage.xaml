@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Strongroom.App.Pages.ItemDetailPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer>
+        <StackPanel MaxWidth="640" Margin="24" Spacing="12" HorizontalAlignment="Left">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Back" Click="OnBack" />
+                <Button Content="Edit" Click="OnEdit" />
+                <Button Content="Move to trash" Click="OnTrash" />
+            </StackPanel>
+            <TextBlock x:Name="TitleText" Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap" />
+            <TextBlock x:Name="KindText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+            <StackPanel x:Name="UsernameRow" Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="Username" Width="110" VerticalAlignment="Center" />
+                <TextBlock x:Name="UsernameText" VerticalAlignment="Center" IsTextSelectionEnabled="True" MinWidth="240" />
+                <Button Content="Copy" Click="OnCopyUsername" />
+            </StackPanel>
+
+            <StackPanel x:Name="PasswordRow" Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="Password" Width="110" VerticalAlignment="Center" />
+                <TextBlock x:Name="PasswordText" VerticalAlignment="Center" FontFamily="Consolas" MinWidth="240" Text="••••••••••••" />
+                <ToggleButton x:Name="Reveal" Content="Show" Checked="OnReveal" Unchecked="OnReveal" />
+                <Button Content="Copy" Click="OnCopyPassword" />
+            </StackPanel>
+
+            <StackPanel x:Name="TotpRow" Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="One-time code" Width="110" VerticalAlignment="Center" />
+                <TextBlock x:Name="TotpText" FontFamily="Consolas" FontSize="20" VerticalAlignment="Center" MinWidth="120" />
+                <ProgressBar x:Name="TotpProgress" Width="120" Minimum="0" Maximum="30" VerticalAlignment="Center" />
+                <TextBlock x:Name="TotpSeconds" VerticalAlignment="Center" Width="40" />
+                <Button Content="Copy" Click="OnCopyTotp" />
+            </StackPanel>
+
+            <TextBlock x:Name="UrlsText" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+            <TextBlock x:Name="TagsText" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock x:Name="NotesText" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+            <StackPanel x:Name="FieldsPanel" Spacing="6" />
+            <TextBlock x:Name="MetaText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock x:Name="Error" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

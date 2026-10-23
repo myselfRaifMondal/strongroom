@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Strongroom.App.Pages.CreateVaultPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer>
+        <StackPanel MaxWidth="560" Margin="24" Spacing="12">
+            <TextBlock Text="Create your vault" Style="{StaticResource TitleTextBlockStyle}" />
+            <TextBlock TextWrapping="Wrap"
+                       Text="Your vault lives only on this PC. There is no server and no account. Choose a strong master password." />
+
+            <StackPanel x:Name="PasswordPanel" Spacing="12">
+                <PasswordBox x:Name="Password" Header="Master password" PasswordChanged="OnPasswordChanged" />
+                <TextBlock x:Name="Strength" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <PasswordBox x:Name="Confirm" Header="Confirm master password" />
+                <InfoBar IsOpen="True" IsClosable="False" Severity="Warning" Title="No recovery"
+                         Message="If you lose your master password or your Secret Key, your data is permanently lost. Nobody, including us, can recover it." />
+                <Button x:Name="CreateButton" Content="Create vault" Style="{StaticResource AccentButtonStyle}" Click="OnCreate" />
+                <ProgressRing x:Name="Busy" IsActive="False" HorizontalAlignment="Left" />
+                <TextBlock x:Name="Error" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel x:Name="SecretKeyPanel" Spacing="12" Visibility="Collapsed">
+                <TextBlock Text="Your Secret Key" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock TextWrapping="Wrap"
+                           Text="This is shown once. Write it down or print it and keep it somewhere safe. You need it, together with your master password, to unlock this vault on a new device and to open exported files." />
+                <Border Padding="16" CornerRadius="6" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <TextBlock x:Name="SecretKeyText" FontFamily="Consolas" FontSize="20" IsTextSelectionEnabled="True" TextWrapping="Wrap" />
+                </Border>
+                <InfoBar IsOpen="True" IsClosable="False" Severity="Error" Title="Permanent data loss if lost"
+                         Message="A lost master password or Secret Key means permanent, unrecoverable data loss. There is no reset and no recovery code." />
+                <Button Content="Copy Secret Key (clears in 25 s)" Click="OnCopySecretKey" />
+                <CheckBox x:Name="Acknowledge" Content="I have saved my Secret Key and understand it cannot be recovered" Checked="OnAcknowledge" Unchecked="OnAcknowledge" />
+                <Button x:Name="ContinueButton" Content="Open my vault" IsEnabled="False" Style="{StaticResource AccentButtonStyle}" Click="OnContinue" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

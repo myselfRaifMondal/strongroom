@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>$(StrongroomWindowsTfm)</TargetFramework>
+    <AssemblyName>strongroom-cli</AssemblyName>
+    <RootNamespace>Strongroom.Cli</RootNamespace>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Strongroom.Core\Strongroom.Core.csproj" />
+  </ItemGroup>
+</Project>

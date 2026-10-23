@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    UniFFI C# bindings (Generated/strongroom.cs, produced by
+    scripts/gen-bindings.ps1) plus the Win32 platform services shared by the
+    WinUI app, the CLI harness and the tests: TPM device key (NCrypt),
+    clipboard with history exclusion, global hotkey, capture exclusion,
+    confirmed auto-type. No WinUI dependency, so it runs headless on CI.
+  -->
+  <PropertyGroup>
+    <TargetFramework>$(StrongroomWindowsTfm)</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Strongroom.Core</RootNamespace>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <!-- Generated bindings are not ours to lint. -->
+    <NoWarn>$(NoWarn);CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625;CS1591;CS0105;CS0108;CS0114;CS0618;CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Strongroom.Tests" />
+  </ItemGroup>
+
+  <!-- Native core: copied next to every consumer's output (transitively). -->
+  <ItemGroup Condition="Exists('$(StrongroomNativeDir)strongroom_ffi.dll')">
+    <None Include="$(StrongroomNativeDir)strongroom_ffi.dll" Link="strongroom_ffi.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+  <Target Name="StrongroomCheckBindings" BeforeTargets="CoreCompile">
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)Generated\strongroom.cs')"
+           Text="Generated\strongroom.cs is missing. Run apps/windows/scripts/gen-bindings.ps1 first." />
+  </Target>
+</Project>

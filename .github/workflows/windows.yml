@@ -1,0 +1,192 @@
+# Windows app CI. There is no Windows dev machine: this workflow is the only
+# place the WinUI 3 app, the C# bindings and the CLI harness are built and run.
+name: windows
+
+on:
+  push:
+    branches: ["main", "phase2/windows", "phase2/windows-*"]
+    paths:
+      - "apps/windows/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/windows.yml"
+  pull_request:
+    paths:
+      - "apps/windows/**"
+      - "crates/**"
+      - ".github/workflows/windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  UNIFFI_BINDGEN_CS_TAG: "v0.11.1+v0.31.0"
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  native:
+    name: strongroom_ffi.dll (${{ matrix.target }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            rid: win-x64
+          - target: aarch64-pc-windows-msvc
+            rid: win-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain
+        run: |
+          rustup show active-toolchain
+          rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Build DLL
+        shell: pwsh
+        run: apps/windows/scripts/build-native.ps1 -Target ${{ matrix.target }}
+      - name: Exported symbols (sanity)
+        shell: pwsh
+        run: |
+          $dumpbin = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe -ErrorAction SilentlyContinue | Where-Object FullName -match 'Hostx64\\x64' | Select-Object -First 1
+          if ($dumpbin) { & $dumpbin.FullName /exports apps/windows/native/${{ matrix.rid }}/strongroom_ffi.dll | Select-String 'uniffi_strongroom_ffi_fn_' | Measure-Object | ForEach-Object { "exported uniffi fn symbols: $($_.Count)" } }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.rid }}
+          path: apps/windows/native/${{ matrix.rid }}/strongroom_ffi.dll
+          if-no-files-found: error
+
+  bindings:
+    name: C# bindings (uniffi-bindgen-cs)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache uniffi-bindgen-cs
+        id: cache-bindgen
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/uniffi-bindgen-cs.exe
+          key: uniffi-bindgen-cs-${{ env.UNIFFI_BINDGEN_CS_TAG }}-windows
+      - name: Install uniffi-bindgen-cs
+        if: steps.cache-bindgen.outputs.cache-hit != 'true'
+        run: cargo install uniffi-bindgen-cs --git https://github.com/NordSecurity/uniffi-bindgen-cs --tag "${{ env.UNIFFI_BINDGEN_CS_TAG }}" --locked
+      - name: Generate
+        shell: pwsh
+        run: apps/windows/scripts/gen-bindings.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bindings-cs
+          path: apps/windows/src/Strongroom.Core/Generated/strongroom.cs
+          if-no-files-found: error
+
+  app:
+    name: build, test, CLI round-trip, app launch
+    needs: [native, bindings]
+    runs-on: windows-latest
+    env:
+      # The core FFI bodies are stubs on main until phase2/core-vault lands.
+      # On the integration branch an Unsupported result is a failure.
+      STRONGROOM_REQUIRE_CORE: ${{ github.ref_name == 'phase2/windows-with-core' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-win-x64
+          path: apps/windows/native/win-x64
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-win-arm64
+          path: apps/windows/native/win-arm64
+      - uses: actions/download-artifact@v4
+        with:
+          name: bindings-cs
+          path: apps/windows/src/Strongroom.Core/Generated
+
+      - name: Runner facts (TPM, OS)
+        shell: pwsh
+        run: |
+          [System.Environment]::OSVersion.VersionString
+          try { Get-Tpm | Format-List } catch { "Get-Tpm: $($_.Exception.Message)" }
+          try { Get-CimInstance -Namespace root/cimv2/security/microsofttpm -ClassName Win32_Tpm -ErrorAction Stop | Format-List IsActivated_InitialValue,IsEnabled_InitialValue,SpecVersion } catch { "Win32_Tpm: $($_.Exception.Message)" }
+
+      - name: Unit tests
+        shell: pwsh
+        run: dotnet test apps/windows/tests/Strongroom.Tests/Strongroom.Tests.csproj -c Release -p:Platform=x64 --logger "console;verbosity=normal"
+
+      - name: Build CLI harness
+        shell: pwsh
+        run: dotnet publish apps/windows/src/Strongroom.Cli/Strongroom.Cli.csproj -c Release -r win-x64 --self-contained false -o apps/windows/out/cli
+
+      - name: CLI probe (FFI load, TPM / CNG availability)
+        shell: pwsh
+        run: |
+          apps/windows/out/cli/strongroom-cli.exe probe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: CLI round-trip (create, add, export VTF, import, print titles)
+        shell: pwsh
+        env:
+          STRONGROOM_PASSWORD: "ci-throwaway-master-password"
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "roundtrip"
+          apps/windows/out/cli/strongroom-cli.exe roundtrip --dir $dir
+          $code = $LASTEXITCODE
+          if ($code -eq 3 -and $env:STRONGROOM_REQUIRE_CORE -ne '1') {
+            "::warning title=Core not implemented::strongroom_ffi returned Unsupported; the round-trip could not run against the stub core."
+            exit 0
+          }
+          if ($code -ne 0) { exit $code }
+          "--- import of the exported file via 'import --in' (Phase 3 entry point) ---"
+          $env:STRONGROOM_SECRET_KEY = Get-Content (Join-Path $dir "source.secret-key.txt") -Raw
+          apps/windows/out/cli/strongroom-cli.exe import --in (Join-Path $dir "windows-roundtrip.vtf")
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item (Join-Path $dir "windows-roundtrip.vtf") apps/windows/out/
+
+      - name: Build WinUI 3 app (x64)
+        shell: pwsh
+        run: dotnet publish apps/windows/src/Strongroom.App/Strongroom.App.csproj -c Release -p:Platform=x64 -r win-x64 -o apps/windows/out/app-x64
+
+      - name: Build WinUI 3 app (arm64, compile only)
+        shell: pwsh
+        run: dotnet build apps/windows/src/Strongroom.App/Strongroom.App.csproj -c Release -p:Platform=ARM64 -r win-arm64
+
+      - name: Launch app EXE (alive check)
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP "app-data"
+          New-Item -ItemType Directory -Force $data | Out-Null
+          $env:STRONGROOM_DATA_DIR = $data
+          $exe = Resolve-Path apps/windows/out/app-x64/Strongroom.exe
+          $p = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 10
+          $p.Refresh()
+          if ($p.HasExited) {
+            "APP EXITED EARLY with code $($p.ExitCode)"
+            Get-Content (Join-Path $data "diagnostics.log") -ErrorAction SilentlyContinue
+            Get-WinEvent -LogName Application -MaxEvents 20 -ErrorAction SilentlyContinue | Where-Object { $_.ProviderName -in '.NET Runtime','Application Error' } | Format-List TimeCreated,ProviderName,Message
+            exit 1
+          }
+          "APP ALIVE after 10 s: pid=$($p.Id) responding=$($p.Responding) mainWindowHandle=$($p.MainWindowHandle) title='$($p.MainWindowTitle)' workingSetMB=$([math]::Round($p.WorkingSet64/1MB))"
+          "--- app diagnostics.log ---"
+          Get-Content (Join-Path $data "diagnostics.log") -ErrorAction SilentlyContinue
+          Stop-Process -Id $p.Id -Force
+          "app process killed"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: strongroom-windows
+          path: |
+            apps/windows/out/cli
+            apps/windows/out/app-x64
+            apps/windows/out/*.vtf
+          if-no-files-found: warn

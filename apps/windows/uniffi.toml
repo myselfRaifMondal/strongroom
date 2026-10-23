@@ -1,0 +1,8 @@
+# uniffi-bindgen-cs (v0.11.1+v0.31.0) configuration for the Windows app.
+# Passed explicitly with --config so nothing under crates/ has to change.
+[bindings.csharp]
+cdylib_name = "strongroom_ffi"
+namespace = "Strongroom.Ffi"
+global_methods_class_name = "StrongroomCore"
+# Bindings live in Strongroom.Core and are consumed by the app, CLI and tests.
+access_modifier = "public"
