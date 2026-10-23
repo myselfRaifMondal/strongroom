@@ -24,7 +24,7 @@ public sealed partial class QuickAccessWindow : Window
         _target = target;
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var protection = CaptureExclusion.Apply(_hwnd);
-        Diag.Log($"quick access: capture protection = {protection}");
+        Diag.Log($"quick access: capture protection = {protection} (display affinity 0x{CaptureExclusion.Current(_hwnd):X}), target window captured = {target is not null}");
 
         AppWindow.Resize(new Windows.Graphics.SizeInt32(560, 520));
         if (AppWindow.Presenter is OverlappedPresenter p)

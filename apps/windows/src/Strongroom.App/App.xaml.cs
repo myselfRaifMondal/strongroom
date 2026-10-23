@@ -17,5 +17,13 @@ public partial class App : Application
         AppServices.Start(window);
         window.Activate();
         Diag.Log("main window activated");
+
+        // CI smoke test only: also open the quick-access overlay so its
+        // window creation and capture exclusion are exercised on the runner.
+        if (Environment.GetEnvironmentVariable("STRONGROOM_SMOKE_OVERLAY") == "1")
+        {
+            AppServices.ShowQuickAccess();
+            Diag.Log("smoke: quick access overlay opened");
+        }
     }
 }

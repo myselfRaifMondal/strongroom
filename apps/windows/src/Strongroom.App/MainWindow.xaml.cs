@@ -14,7 +14,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         Hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var protection = CaptureExclusion.Apply(Hwnd);
-        Diag.Log($"main window: capture protection = {protection}");
+        Diag.Log($"main window: capture protection = {protection} (display affinity 0x{CaptureExclusion.Current(Hwnd):X})");
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1000, 720));
 
         AppServices.VaultChanged += () =>

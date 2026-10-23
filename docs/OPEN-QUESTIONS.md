@@ -70,8 +70,9 @@ little-endian; it is reversed to big-endian before returning to the core.
 
 ## OQ-W2 No TPM on CI; hardware path unverified
 There is no Windows dev machine; the app is built and run only on GitHub
-Actions `windows-latest`. See the `probe` step of the windows workflow for
-what the runner offers. Where the PCP cannot create a P-256 key, Windows
+Actions `windows-latest`. Observed on the runner (Windows 10.0.26100):
+`Get-Tpm` reports TpmPresent False, and opening the Platform Crypto
+Provider fails with 0x80090030 (NTE_DEVICE_NOT_READY). Where the PCP cannot create a P-256 key, Windows
 Hello unlock and device-bound export are disabled and the UI says so;
 password unlock is unaffected. The NCrypt code path is exercised on CI with
 the Microsoft Software KSP (identical calls, checked against .NET's ECDH),
