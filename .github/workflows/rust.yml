@@ -129,6 +129,11 @@ jobs:
   cross-apple:
     name: build ${{ matrix.target }}
     runs-on: macos-latest
+    env:
+      # Without an explicit target rustc links iOS for 10.0, which lacks
+      # ___chkstk_darwin used by the bundled SQLCipher and OpenSSL C code.
+      IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
     strategy:
       fail-fast: false
       matrix:
