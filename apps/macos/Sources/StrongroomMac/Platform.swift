@@ -17,6 +17,12 @@ enum WindowPrivacy {
             forName: NSApplication.didUpdateNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { sweep() }
         }
+        // didUpdate only fires when events arrive; windows AppKit creates
+        // while the app is idle (menu bar backing windows) are caught here.
+        let timer = Timer(timeInterval: 0.5, repeats: true) { _ in
+            MainActor.assumeIsolated { sweep() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     static func sweep() {
