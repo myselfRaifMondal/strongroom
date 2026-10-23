@@ -11,7 +11,9 @@ pub mod error;
 pub mod keys;
 pub mod payload;
 
-pub use container::{export, import_with_device, import_with_password, inspect, Info, PasswordCredentials};
+pub use container::{
+    export, import_with_device, import_with_password, inspect, Info, PasswordCredentials,
+};
 pub use device::DeviceKey;
 pub use error::{Check, Error, Result};
 pub use keys::{Password, SecretKey};

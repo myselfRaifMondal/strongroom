@@ -47,7 +47,10 @@ impl<'a> Decoder<'a> {
     }
 
     fn be(&mut self, n: usize) -> R<u64> {
-        Ok(self.take(n)?.iter().fold(0u64, |acc, &b| (acc << 8) | u64::from(b)))
+        Ok(self
+            .take(n)?
+            .iter()
+            .fold(0u64, |acc, &b| (acc << 8) | u64::from(b)))
     }
 
     /// Reads an initial byte and argument for majors 0-6, enforcing the
@@ -60,7 +63,7 @@ impl<'a> Decoder<'a> {
             26 => (self.be(4)?, 0x1_0000),
             27 => (self.be(8)?, 0x1_0000_0000),
             31 => return Err(Check::CborDeterministic), // indefinite length
-            _ => return Err(Check::CborWellformed),      // 28..=30 reserved
+            _ => return Err(Check::CborWellformed),     // 28..=30 reserved
         };
         if v < min {
             return Err(Check::CborDeterministic);
@@ -237,8 +240,14 @@ mod tests {
         assert_eq!(err(&[0x19, 0x00, 0xff]), Check::CborDeterministic);
         assert_eq!(err(&[0x9f, 0x01, 0xff]), Check::CborDeterministic); // indefinite array
         assert_eq!(err(&[0x5f, 0x41, 0x00, 0xff]), Check::CborDeterministic);
-        assert_eq!(err(&[0xa2, 0x02, 0x00, 0x01, 0x00]), Check::CborDeterministic); // unsorted
-        assert_eq!(err(&[0xa2, 0x01, 0x00, 0x01, 0x00]), Check::CborDuplicateKey);
+        assert_eq!(
+            err(&[0xa2, 0x02, 0x00, 0x01, 0x00]),
+            Check::CborDeterministic
+        ); // unsorted
+        assert_eq!(
+            err(&[0xa2, 0x01, 0x00, 0x01, 0x00]),
+            Check::CborDuplicateKey
+        );
     }
 
     #[test]
@@ -257,7 +266,8 @@ mod tests {
         assert_eq!(err(&[0x62, 0x61]), Check::CborWellformed); // truncated text
         assert_eq!(err(&[0x62, 0xff, 0xfe]), Check::CborWellformed); // bad UTF-8
         assert_eq!(err(&[0x1c]), Check::CborWellformed); // reserved ai
-        assert_eq!(err(&[0x9a, 0xff, 0xff, 0xff, 0xff]), Check::CborWellformed); // huge count
+        assert_eq!(err(&[0x9a, 0xff, 0xff, 0xff, 0xff]), Check::CborWellformed);
+        // huge count
     }
 
     #[test]
@@ -274,7 +284,18 @@ mod tests {
 
     #[test]
     fn encoder_is_shortest_and_matches_ciborium() {
-        for v in [0u64, 23, 24, 255, 256, 65535, 65536, u32::MAX as u64, u32::MAX as u64 + 1, u64::MAX] {
+        for v in [
+            0u64,
+            23,
+            24,
+            255,
+            256,
+            65535,
+            65536,
+            u32::MAX as u64,
+            u32::MAX as u64 + 1,
+            u64::MAX,
+        ] {
             let mut e = Enc::new();
             e.uint(v);
             let (d, n) = decode(&e.0).unwrap();

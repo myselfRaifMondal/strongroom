@@ -47,7 +47,9 @@ pub fn key_id(public_key: &[u8; PUBLIC_KEY_LEN]) -> [u8; KEY_ID_LEN] {
 /// Validates that `pk` is an uncompressed SEC1 point on P-256.
 pub fn validate_public_key(pk: &[u8; PUBLIC_KEY_LEN]) -> Result<()> {
     if pk[0] != 0x04 {
-        return Err(Error::InvalidInput("device public key must be uncompressed SEC1"));
+        return Err(Error::InvalidInput(
+            "device public key must be uncompressed SEC1",
+        ));
     }
     <DhP256HkdfSha256 as Kem>::PublicKey::from_bytes(pk)
         .map(|_| ())
@@ -97,12 +99,11 @@ pub fn seal_export(
     let pk = <DhP256HkdfSha256 as Kem>::PublicKey::from_bytes(pk_r)
         .map_err(|_| Error::InvalidInput("device public key"))?;
     let mut rng = ReplayRng { bytes: ikm_e };
-    let (enc, ctx) = hpke::setup_sender_with_rng::<hpke::aead::ExportOnlyAead, hpke::kdf::HkdfSha256, DhP256HkdfSha256>(
-        &OpModeS::Base,
-        &pk,
-        info,
-        &mut rng,
-    )
+    let (enc, ctx) = hpke::setup_sender_with_rng::<
+        hpke::aead::ExportOnlyAead,
+        hpke::kdf::HkdfSha256,
+        DhP256HkdfSha256,
+    >(&OpModeS::Base, &pk, info, &mut rng)
     .map_err(|_| Error::InvalidInput("hpke setup"))?;
     let mut out = Zeroizing::new([0u8; KEY_LEN]);
     ctx.export(exporter_context, out.as_mut())
@@ -115,12 +116,24 @@ pub fn seal_export(
 /// Receiver: RFC 9180 `Decap` with a hardware ECDH, base-mode key schedule,
 /// then `Export(exporter_context, 32)`. Bit-identical to `SetupBaseR` +
 /// `Export`. Returns `None` on any failure.
-pub fn open_export(device: &dyn DeviceKey, enc: &[u8; ENC_LEN], info: &[u8], exporter_context: &[u8]) -> Option<Key> {
+pub fn open_export(
+    device: &dyn DeviceKey,
+    enc: &[u8; ENC_LEN],
+    info: &[u8],
+    exporter_context: &[u8],
+) -> Option<Key> {
     // Reject anything that is not a valid point before it reaches hardware.
     <DhP256HkdfSha256 as Kem>::EncappedKey::from_bytes(enc).ok()?;
     let pk_rm = device.public_key();
     let dh = device.agree(enc).ok()?;
-    Some(open_export_with_dh(&dh, enc, &pk_rm, info, exporter_context, AEAD_EXPORT_ONLY))
+    Some(open_export_with_dh(
+        &dh,
+        enc,
+        &pk_rm,
+        info,
+        exporter_context,
+        AEAD_EXPORT_ONLY,
+    ))
 }
 
 fn suite_kem() -> [u8; 5] {
@@ -129,13 +142,19 @@ fn suite_kem() -> [u8; 5] {
 }
 
 fn suite_hpke(aead_id: u16) -> [u8; 10] {
-    let (k, f, a) = (KEM_ID.to_be_bytes(), KDF_ID.to_be_bytes(), aead_id.to_be_bytes());
+    let (k, f, a) = (
+        KEM_ID.to_be_bytes(),
+        KDF_ID.to_be_bytes(),
+        aead_id.to_be_bytes(),
+    );
     [b'H', b'P', b'K', b'E', k[0], k[1], f[0], f[1], a[0], a[1]]
 }
 
 /// `LabeledExtract(salt, label, ikm) = Extract(salt, "HPKE-v1" || suite_id || label || ikm)`
 fn labeled_extract(salt: &[u8], suite_id: &[u8], label: &[u8], ikm: &[u8]) -> Zeroizing<[u8; 32]> {
-    let mut labeled = Zeroizing::new(Vec::with_capacity(7 + suite_id.len() + label.len() + ikm.len()));
+    let mut labeled = Zeroizing::new(Vec::with_capacity(
+        7 + suite_id.len() + label.len() + ikm.len(),
+    ));
     labeled.extend_from_slice(b"HPKE-v1");
     labeled.extend_from_slice(suite_id);
     labeled.extend_from_slice(label);
@@ -148,7 +167,9 @@ fn labeled_extract(salt: &[u8], suite_id: &[u8], label: &[u8], ikm: &[u8]) -> Ze
 
 /// `LabeledExpand(prk, label, info, L) = Expand(prk, I2OSP(L,2) || "HPKE-v1" || suite_id || label || info, L)`
 fn labeled_expand(prk: &[u8; 32], suite_id: &[u8], label: &[u8], info: &[u8], out: &mut [u8]) {
-    let len = u16::try_from(out.len()).expect("output length fits u16").to_be_bytes();
+    let len = u16::try_from(out.len())
+        .expect("output length fits u16")
+        .to_be_bytes();
     let hk = Hkdf::<Sha256>::from_prk(prk).expect("32-byte PRK");
     hk.expand_multi_info(&[&len, b"HPKE-v1", suite_id, label, info], out)
         .expect("valid HKDF output length");
@@ -167,23 +188,43 @@ pub(crate) fn open_export_with_dh(
     let shared_secret = extract_and_expand(dh, enc, pk_rm);
     let exporter_secret = exporter_secret(&shared_secret, info, aead_id);
     let mut out = Zeroizing::new([0u8; KEY_LEN]);
-    labeled_expand(&exporter_secret, &suite_hpke(aead_id), b"sec", exporter_context, out.as_mut());
+    labeled_expand(
+        &exporter_secret,
+        &suite_hpke(aead_id),
+        b"sec",
+        exporter_context,
+        out.as_mut(),
+    );
     out
 }
 
-pub(crate) fn extract_and_expand(dh: &[u8; 32], enc: &[u8; ENC_LEN], pk_rm: &[u8; PUBLIC_KEY_LEN]) -> Zeroizing<[u8; 32]> {
+pub(crate) fn extract_and_expand(
+    dh: &[u8; 32],
+    enc: &[u8; ENC_LEN],
+    pk_rm: &[u8; PUBLIC_KEY_LEN],
+) -> Zeroizing<[u8; 32]> {
     let suite = suite_kem();
     let mut kem_context = [0u8; ENC_LEN + PUBLIC_KEY_LEN];
     kem_context[..ENC_LEN].copy_from_slice(enc);
     kem_context[ENC_LEN..].copy_from_slice(pk_rm);
     let eae_prk = labeled_extract(b"", &suite, b"eae_prk", dh);
     let mut shared = Zeroizing::new([0u8; 32]);
-    labeled_expand(&eae_prk, &suite, b"shared_secret", &kem_context, shared.as_mut());
+    labeled_expand(
+        &eae_prk,
+        &suite,
+        b"shared_secret",
+        &kem_context,
+        shared.as_mut(),
+    );
     kem_context.zeroize();
     shared
 }
 
-pub(crate) fn exporter_secret(shared_secret: &[u8; 32], info: &[u8], aead_id: u16) -> Zeroizing<[u8; 32]> {
+pub(crate) fn exporter_secret(
+    shared_secret: &[u8; 32],
+    info: &[u8],
+    aead_id: u16,
+) -> Zeroizing<[u8; 32]> {
     let suite = suite_hpke(aead_id);
     let psk_id_hash = labeled_extract(b"", &suite, b"psk_id_hash", b"");
     let info_hash = labeled_extract(b"", &suite, b"info_hash", info);
@@ -204,7 +245,10 @@ pub(crate) mod tests {
 
     pub fn hex(s: &str) -> Vec<u8> {
         let s: String = s.split_whitespace().collect();
-        (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
     }
 
     /// Software stand-in for a hardware key (tests only).
@@ -246,14 +290,29 @@ pub(crate) mod tests {
         let dh = dev.agree(&enc).unwrap();
 
         let ss = extract_and_expand(&dh, &enc, &pk_rm);
-        assert_eq!(ss.as_slice(), hex("c0d26aeab536609a572b07695d933b589dcf363ff9d93c93adea537aeabb8cb8"));
+        assert_eq!(
+            ss.as_slice(),
+            hex("c0d26aeab536609a572b07695d933b589dcf363ff9d93c93adea537aeabb8cb8")
+        );
         let es = exporter_secret(&ss, &info, 0x0001);
-        assert_eq!(es.as_slice(), hex("14ad94af484a7ad3ef40e9f3be99ecc6fa9036df9d4920548424df127ee0d99f"));
+        assert_eq!(
+            es.as_slice(),
+            hex("14ad94af484a7ad3ef40e9f3be99ecc6fa9036df9d4920548424df127ee0d99f")
+        );
 
         for (ctx, want) in [
-            ("", "5e9bc3d236e1911d95e65b576a8a86d478fb827e8bdfe77b741b289890490d4d"),
-            ("00", "6cff87658931bda83dc857e6353efe4987a201b849658d9b047aab4cf216e796"),
-            ("54657374436f6e74657874", "d8f1ea7942adbba7412c6d431c62d01371ea476b823eb697e1f6e6cae1dab85a"),
+            (
+                "",
+                "5e9bc3d236e1911d95e65b576a8a86d478fb827e8bdfe77b741b289890490d4d",
+            ),
+            (
+                "00",
+                "6cff87658931bda83dc857e6353efe4987a201b849658d9b047aab4cf216e796",
+            ),
+            (
+                "54657374436f6e74657874",
+                "d8f1ea7942adbba7412c6d431c62d01371ea476b823eb697e1f6e6cae1dab85a",
+            ),
         ] {
             let got = open_export_with_dh(&dh, &enc, &pk_rm, &info, &hex(ctx), 0x0001);
             assert_eq!(got.as_slice(), hex(want));
@@ -268,8 +327,10 @@ pub(crate) mod tests {
             let dev = SoftDevice(p256::SecretKey::from_slice(&[seed; 32]).unwrap());
             let pk = dev.public_key();
             let ikm_e = [seed.wrapping_mul(37); 32];
-            let (enc, k_send) = seal_export(&pk, b"VTF1/hpke-info test", b"VTF1/device-wrap", &ikm_e).unwrap();
-            let k_recv = open_export(&dev, &enc, b"VTF1/hpke-info test", b"VTF1/device-wrap").unwrap();
+            let (enc, k_send) =
+                seal_export(&pk, b"VTF1/hpke-info test", b"VTF1/device-wrap", &ikm_e).unwrap();
+            let k_recv =
+                open_export(&dev, &enc, b"VTF1/hpke-info test", b"VTF1/device-wrap").unwrap();
             assert_eq!(k_send.as_slice(), k_recv.as_slice());
             // Wrong info or exporter context gives a different key.
             let other = open_export(&dev, &enc, b"other", b"VTF1/device-wrap").unwrap();

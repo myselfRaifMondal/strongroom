@@ -122,10 +122,37 @@ mod k {
 
     pub const TOP: &[u64] = &[P_VERSION, P_EXPORTED_AT, P_ITEMS, P_TOMBSTONES];
     pub const ITEM: &[u64] = &[
-        ID, KIND, TITLE, CREATED_AT, MODIFIED_AT, HLC, USERNAME, PASSWORD, URLS, NOTES, TOTP, FOLDER, TAGS, FIELDS,
-        TRAVEL_SAFE, HISTORY, TRASHED_AT,
+        ID,
+        KIND,
+        TITLE,
+        CREATED_AT,
+        MODIFIED_AT,
+        HLC,
+        USERNAME,
+        PASSWORD,
+        URLS,
+        NOTES,
+        TOTP,
+        FOLDER,
+        TAGS,
+        FIELDS,
+        TRAVEL_SAFE,
+        HISTORY,
+        TRASHED_AT,
     ];
-    pub const REV_DATA: &[u64] = &[KIND, TITLE, USERNAME, PASSWORD, URLS, NOTES, TOTP, FOLDER, TAGS, FIELDS, TRAVEL_SAFE];
+    pub const REV_DATA: &[u64] = &[
+        KIND,
+        TITLE,
+        USERNAME,
+        PASSWORD,
+        URLS,
+        NOTES,
+        TOTP,
+        FOLDER,
+        TAGS,
+        FIELDS,
+        TRAVEL_SAFE,
+    ];
     pub const FIELD: &[u64] = &[1, 2, 3];
     pub const REVISION: &[u64] = &[1, 2];
     pub const TOMBSTONE: &[u64] = &[1, 2, 3];
@@ -141,7 +168,9 @@ struct Map<'v, 'a> {
 
 impl<'v, 'a> Map<'v, 'a> {
     fn new(v: &'v V<'a>, allowed: &[u64], required: &[u64]) -> R<Self> {
-        let V::M(entries) = v else { return Err(Check::CborType) };
+        let V::M(entries) = v else {
+            return Err(Check::CborType);
+        };
         if entries.iter().any(|(key, _)| !allowed.contains(key)) {
             return Err(Check::CborUnknownKey);
         }
@@ -231,7 +260,11 @@ fn decode_data(m: &Map<'_, '_>) -> R<ItemData> {
         .iter()
         .map(|f| {
             let f = Map::new(f, k::FIELD, &[1, 2])?;
-            Ok(Field { name: f.text(1)?, value: f.text(2)?, concealed: f.flag(3)? })
+            Ok(Field {
+                name: f.text(1)?,
+                value: f.text(2)?,
+                concealed: f.flag(3)?,
+            })
         })
         .collect::<R<Vec<_>>>()?;
     Ok(ItemData {
@@ -250,15 +283,33 @@ fn decode_data(m: &Map<'_, '_>) -> R<ItemData> {
 }
 
 fn decode_item(v: &V<'_>) -> R<Item> {
-    let m = Map::new(v, k::ITEM, &[k::ID, k::KIND, k::TITLE, k::CREATED_AT, k::MODIFIED_AT, k::HLC])?;
+    let m = Map::new(
+        v,
+        k::ITEM,
+        &[
+            k::ID,
+            k::KIND,
+            k::TITLE,
+            k::CREATED_AT,
+            k::MODIFIED_AT,
+            k::HLC,
+        ],
+    )?;
     let history = m
         .opt_array(k::HISTORY, MAX_REVISIONS)?
         .iter()
         .map(|r| {
             let r = Map::new(r, k::REVISION, &[1, 2])?;
             let modified_at = r.uint(1)?;
-            let d = Map::new(r.get(2).expect("required"), k::REV_DATA, &[k::KIND, k::TITLE])?;
-            Ok(Revision { modified_at, data: decode_data(&d)? })
+            let d = Map::new(
+                r.get(2).expect("required"),
+                k::REV_DATA,
+                &[k::KIND, k::TITLE],
+            )?;
+            Ok(Revision {
+                modified_at,
+                data: decode_data(&d)?,
+            })
         })
         .collect::<R<Vec<_>>>()?;
     Ok(Item {
@@ -298,10 +349,18 @@ fn decode_payload(v: &V<'_>) -> R<Payload> {
         .iter()
         .map(|t| {
             let t = Map::new(t, k::TOMBSTONE, &[1, 2, 3])?;
-            Ok(Tombstone { id: t.id(1)?, deleted_at: t.uint(2)?, hlc: t.uint(3)? })
+            Ok(Tombstone {
+                id: t.id(1)?,
+                deleted_at: t.uint(2)?,
+                hlc: t.uint(3)?,
+            })
         })
         .collect::<R<Vec<_>>>()?;
-    Ok(Payload { exported_at: m.uint(k::P_EXPORTED_AT)?, items, tombstones })
+    Ok(Payload {
+        exported_at: m.uint(k::P_EXPORTED_AT)?,
+        items,
+        tombstones,
+    })
 }
 
 // ------------------------------------------------------------------ encode
@@ -329,7 +388,11 @@ fn data_entries(d: &ItemData) -> Result<Vec<u64>> {
         (k::FIELDS, !d.fields.is_empty()),
         (k::TRAVEL_SAFE, d.travel_safe),
     ];
-    keys.extend(opt.iter().filter(|(_, present)| *present).map(|(key, _)| *key));
+    keys.extend(
+        opt.iter()
+            .filter(|(_, present)| *present)
+            .map(|(key, _)| *key),
+    );
     Ok(keys)
 }
 
@@ -464,7 +527,11 @@ pub(crate) mod tests {
             totp: Some("JBSWY3DPEHPK3PXP".into()),
             folder: Some("Personal".into()),
             tags: vec!["email".into(), "work".into()],
-            fields: vec![Field { name: "PIN".into(), value: "1234".into(), concealed: true }],
+            fields: vec![Field {
+                name: "PIN".into(),
+                value: "1234".into(),
+                concealed: true,
+            }],
             travel_safe: true,
         }
     }
@@ -478,10 +545,17 @@ pub(crate) mod tests {
                 modified_at: 1_750_000_000,
                 hlc: 0x0001_9000_0000_0001,
                 data: sample_data("Example"),
-                history: vec![Revision { modified_at: 1_700_000_000, data: sample_data("Old") }],
+                history: vec![Revision {
+                    modified_at: 1_700_000_000,
+                    data: sample_data("Old"),
+                }],
                 trashed_at: None,
             }],
-            tombstones: vec![Tombstone { id: [2; 16], deleted_at: 1_740_000_000, hlc: 7 }],
+            tombstones: vec![Tombstone {
+                id: [2; 16],
+                deleted_at: 1_740_000_000,
+                hlc: 7,
+            }],
         }
     }
 
@@ -503,17 +577,35 @@ pub(crate) mod tests {
     fn schema_violations() {
         let check = |b: &[u8]| decode_plaintext(b).err().unwrap();
         // {1:1, 2:0} missing items
-        assert_eq!(check(&[0xa2, 0x01, 0x01, 0x02, 0x00]), Error::Rejected(Check::CborMissingKey));
+        assert_eq!(
+            check(&[0xa2, 0x01, 0x01, 0x02, 0x00]),
+            Error::Rejected(Check::CborMissingKey)
+        );
         // {1:2, 2:0, 3:[]} wrong version
-        assert_eq!(check(&[0xa3, 0x01, 0x02, 0x02, 0x00, 0x03, 0x80]), Error::Rejected(Check::PayloadVersion));
+        assert_eq!(
+            check(&[0xa3, 0x01, 0x02, 0x02, 0x00, 0x03, 0x80]),
+            Error::Rejected(Check::PayloadVersion)
+        );
         // {1:1, 2:0, 3:[], 9:0} unknown key
-        assert_eq!(check(&[0xa4, 0x01, 0x01, 0x02, 0x00, 0x03, 0x80, 0x09, 0x00]), Error::Rejected(Check::CborUnknownKey));
+        assert_eq!(
+            check(&[0xa4, 0x01, 0x01, 0x02, 0x00, 0x03, 0x80, 0x09, 0x00]),
+            Error::Rejected(Check::CborUnknownKey)
+        );
         // {1:1, 2:0, 3:[], 4:[]} empty optional
-        assert_eq!(check(&[0xa4, 0x01, 0x01, 0x02, 0x00, 0x03, 0x80, 0x04, 0x80]), Error::Rejected(Check::CborEmptyOptional));
+        assert_eq!(
+            check(&[0xa4, 0x01, 0x01, 0x02, 0x00, 0x03, 0x80, 0x04, 0x80]),
+            Error::Rejected(Check::CborEmptyOptional)
+        );
         // {1:1, 2:0, 3:0} wrong type
-        assert_eq!(check(&[0xa3, 0x01, 0x01, 0x02, 0x00, 0x03, 0x00]), Error::Rejected(Check::CborType));
+        assert_eq!(
+            check(&[0xa3, 0x01, 0x01, 0x02, 0x00, 0x03, 0x00]),
+            Error::Rejected(Check::CborType)
+        );
         // valid minimal payload, then non-zero padding
         assert!(decode_plaintext(&[0xa3, 0x01, 0x01, 0x02, 0x00, 0x03, 0x80, 0, 0]).is_ok());
-        assert_eq!(check(&[0xa3, 0x01, 0x01, 0x02, 0x00, 0x03, 0x80, 0, 1]), Error::Rejected(Check::Padding));
+        assert_eq!(
+            check(&[0xa3, 0x01, 0x01, 0x02, 0x00, 0x03, 0x80, 0, 1]),
+            Error::Rejected(Check::Padding)
+        );
     }
 }

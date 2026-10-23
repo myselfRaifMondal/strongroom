@@ -6,7 +6,9 @@ use zeroize::{Zeroize, Zeroizing};
 
 use crate::device::{self, DeviceKey, ENC_LEN, KEY_ID_LEN, PUBLIC_KEY_LEN};
 use crate::error::{Check, Error, Result};
-use crate::keys::{self, Key, Password, SecretKey, ARGON2_M_KIB, ARGON2_P, ARGON2_T, KEY_LEN, NONCE_LEN, TAG_LEN};
+use crate::keys::{
+    self, Key, Password, SecretKey, ARGON2_M_KIB, ARGON2_P, ARGON2_T, KEY_LEN, NONCE_LEN, TAG_LEN,
+};
 use crate::payload::{self, Payload};
 
 pub const MAGIC: [u8; 4] = *b"VTF1";
@@ -43,8 +45,17 @@ pub struct Info {
 }
 
 enum Slot<'a> {
-    Password { nonce: &'a [u8; NONCE_LEN], wrapped: &'a [u8] },
-    Device { key_id: &'a [u8; KEY_ID_LEN], enc: &'a [u8; ENC_LEN], nonce: &'a [u8; NONCE_LEN], wrapped: &'a [u8], aad_tail: &'a [u8] },
+    Password {
+        nonce: &'a [u8; NONCE_LEN],
+        wrapped: &'a [u8],
+    },
+    Device {
+        key_id: &'a [u8; KEY_ID_LEN],
+        enc: &'a [u8; ENC_LEN],
+        nonce: &'a [u8; NONCE_LEN],
+        wrapped: &'a [u8],
+        aad_tail: &'a [u8],
+    },
 }
 
 struct Parsed<'a> {
@@ -89,7 +100,10 @@ fn parse(file: &[u8]) -> Result<Parsed<'_>> {
     if be16(&fixed[10..12]) != KEM_DHKEM_P256 {
         return Err(Check::KemId.into());
     }
-    if be32(&fixed[12..16]) != ARGON2_M_KIB || be32(&fixed[16..20]) != ARGON2_T || be32(&fixed[20..24]) != ARGON2_P {
+    if be32(&fixed[12..16]) != ARGON2_M_KIB
+        || be32(&fixed[16..20]) != ARGON2_T
+        || be32(&fixed[20..24]) != ARGON2_P
+    {
         return Err(Check::Argon2Params.into());
     }
     if fixed[80..84] != [0, 0, 0, 0] {
@@ -117,7 +131,10 @@ fn parse(file: &[u8]) -> Result<Parsed<'_>> {
             if password_slots > 1 {
                 return Err(Check::SlotTable.into());
             }
-            slots.push(Slot::Password { nonce: s[1..25].try_into().expect("24"), wrapped: &s[25..73] });
+            slots.push(Slot::Password {
+                nonce: s[1..25].try_into().expect("24"),
+                wrapped: &s[25..73],
+            });
         } else {
             let key_id: &[u8; KEY_ID_LEN] = s[1..9].try_into().expect("8");
             if device_ids.iter().any(|id| bool::from(id.ct_eq(key_id))) {
@@ -160,8 +177,17 @@ fn parse(file: &[u8]) -> Result<Parsed<'_>> {
 /// Parses only the public parts (checks 1-13).
 pub fn inspect(file: &[u8]) -> Result<Info> {
     let p = parse(file)?;
-    let pw = p.slots.iter().filter(|s| matches!(s, Slot::Password { .. })).count() as u8;
-    Ok(Info { version: VERSION, password_slots: pw, device_slots: p.slots.len() as u8 - pw, chunk_count: p.chunk_count })
+    let pw = p
+        .slots
+        .iter()
+        .filter(|s| matches!(s, Slot::Password { .. }))
+        .count() as u8;
+    Ok(Info {
+        version: VERSION,
+        password_slots: pw,
+        device_slots: p.slots.len() as u8 - pw,
+        chunk_count: p.chunk_count,
+    })
 }
 
 fn chunk_nonce(prefix: &[u8; NONCE_PREFIX_LEN], index: u32, last: bool) -> [u8; NONCE_LEN] {
@@ -201,7 +227,12 @@ fn decrypt_payload(p: &Parsed<'_>, vtk: &[u8; KEY_LEN]) -> Result<Payload> {
     payload::decode_plaintext(&plaintext)
 }
 
-fn unwrap_vtk(kek: &[u8; KEY_LEN], nonce: &[u8; NONCE_LEN], aad: &[u8], wrapped: &[u8]) -> Option<Key> {
+fn unwrap_vtk(
+    kek: &[u8; KEY_LEN],
+    nonce: &[u8; NONCE_LEN],
+    aad: &[u8],
+    wrapped: &[u8],
+) -> Option<Key> {
     let pt = keys::open(kek, nonce, aad, wrapped)?;
     let mut vtk = Zeroizing::new([0u8; KEY_LEN]);
     vtk.copy_from_slice(&pt);
@@ -209,7 +240,11 @@ fn unwrap_vtk(kek: &[u8; KEY_LEN], nonce: &[u8; NONCE_LEN], aad: &[u8], wrapped:
 }
 
 /// Opens a file with master password + Secret Key.
-pub fn import_with_password(file: &[u8], password: &Password, secret_key: &SecretKey) -> Result<Payload> {
+pub fn import_with_password(
+    file: &[u8],
+    password: &Password,
+    secret_key: &SecretKey,
+) -> Result<Payload> {
     let p = parse(file)?;
     let kek = keys::derive_kek(password, secret_key, &p.salt)?;
     let mut vtk = None;
@@ -241,10 +276,18 @@ pub fn import_with_device(file: &[u8], device: &dyn DeviceKey) -> Result<Payload
     if !bool::from(found) {
         return Err(Check::SlotUnwrap.into());
     }
-    let Slot::Device { enc, nonce, wrapped, aad_tail, .. } = &p.slots[usize::from(index)] else {
+    let Slot::Device {
+        enc,
+        nonce,
+        wrapped,
+        aad_tail,
+        ..
+    } = &p.slots[usize::from(index)]
+    else {
         return Err(Check::SlotUnwrap.into());
     };
-    let wrap_key = device::open_export(device, enc, &hpke_info(p.fixed), LABEL_DEVICE_WRAP).ok_or(Check::SlotUnwrap)?;
+    let wrap_key = device::open_export(device, enc, &hpke_info(p.fixed), LABEL_DEVICE_WRAP)
+        .ok_or(Check::SlotUnwrap)?;
     let mut aad = p.fixed.to_vec();
     aad.extend_from_slice(aad_tail);
     let vtk = unwrap_vtk(&wrap_key, nonce, &aad, wrapped).ok_or(Check::SlotUnwrap)?;
@@ -292,7 +335,11 @@ pub struct PasswordCredentials<'a> {
 }
 
 /// Exports `payload` with fresh OS randomness.
-pub fn export(payload: &Payload, password: Option<PasswordCredentials<'_>>, device_recipients: &[[u8; PUBLIC_KEY_LEN]]) -> Result<Vec<u8>> {
+pub fn export(
+    payload: &Payload,
+    password: Option<PasswordCredentials<'_>>,
+    device_recipients: &[[u8; PUBLIC_KEY_LEN]],
+) -> Result<Vec<u8>> {
     let rand = ExportRandomness::from_os(device_recipients.len())?;
     export_with(payload, password, device_recipients, &rand)
 }
@@ -334,7 +381,9 @@ pub fn export_padded(
 ) -> Result<Vec<u8>> {
     let slot_count = usize::from(password.is_some()) + device_recipients.len();
     if slot_count == 0 {
-        return Err(Error::InvalidInput("export needs a password or a device recipient"));
+        return Err(Error::InvalidInput(
+            "export needs a password or a device recipient",
+        ));
     }
     if slot_count > MAX_SLOTS {
         return Err(Error::InvalidInput("too many recipients"));
@@ -362,7 +411,11 @@ pub fn export_padded(
     let mut fixed = [0u8; HEADER_LEN];
     fixed[0..4].copy_from_slice(&MAGIC);
     fixed[4..6].copy_from_slice(&VERSION.to_be_bytes());
-    let flags = if device_recipients.is_empty() { 0 } else { FLAG_HAS_DEVICE_SLOTS };
+    let flags = if device_recipients.is_empty() {
+        0
+    } else {
+        FLAG_HAS_DEVICE_SLOTS
+    };
     fixed[6..8].copy_from_slice(&flags.to_be_bytes());
     fixed[8] = KDF_ARGON2ID;
     fixed[9] = AEAD_XCHACHA20POLY1305;
@@ -375,7 +428,8 @@ pub fn export_padded(
     fixed[75] = slot_count as u8;
     fixed[76..80].copy_from_slice(&(chunk_count as u32).to_be_bytes());
 
-    let mut out = Vec::with_capacity(HEADER_LEN + slot_count * DEVICE_SLOT_LEN + chunk_count * CHUNK_LEN);
+    let mut out =
+        Vec::with_capacity(HEADER_LEN + slot_count * DEVICE_SLOT_LEN + chunk_count * CHUNK_LEN);
     out.extend_from_slice(&fixed);
 
     if let Some(creds) = password {

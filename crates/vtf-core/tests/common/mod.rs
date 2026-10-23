@@ -15,7 +15,8 @@ use zeroize::Zeroizing;
 
 pub const PASSWORD: &str = "correct horse battery staple / VTF1 test vector";
 /// NFC form; NFKC folds the ligature, roman numeral and fullwidth digits.
-pub const UNICODE_PASSWORD: &str = "\u{C5}ngstr\u{F6}m \u{FB03} \u{216B} \u{FF12}\u{FF10}\u{FF12}\u{FF16}";
+pub const UNICODE_PASSWORD: &str =
+    "\u{C5}ngstr\u{F6}m \u{FB03} \u{216B} \u{FF12}\u{FF10}\u{FF12}\u{FF16}";
 pub const UNICODE_ALTERNATES: &[&str] = &[
     // NFD of the same text.
     "A\u{30A}ngstro\u{308}m \u{FB03} \u{216B} \u{FF12}\u{FF10}\u{FF12}\u{FF16}",
@@ -37,7 +38,12 @@ impl SoftDevice {
 
 impl DeviceKey for SoftDevice {
     fn public_key(&self) -> [u8; 65] {
-        self.0.public_key().to_sec1_point(false).as_bytes().try_into().unwrap()
+        self.0
+            .public_key()
+            .to_sec1_point(false)
+            .as_bytes()
+            .try_into()
+            .unwrap()
     }
     fn agree(&self, peer: &[u8; 65]) -> core::result::Result<Zeroizing<[u8; 32]>, ()> {
         let peer = p256::PublicKey::from_sec1_bytes(peer).map_err(|_| ())?;
@@ -58,7 +64,9 @@ pub fn randomness(devices: usize) -> ExportRandomness {
         chunk_nonce_prefix: seq(0x80),
         vtk: seq(0xC0),
         password_slot_nonce: seq(0x20),
-        device: (0..devices).map(|d| (seq(0x50 + 0x10 * d as u8), seq(0x60 + 0x10 * d as u8))).collect(),
+        device: (0..devices)
+            .map(|d| (seq(0x50 + 0x10 * d as u8), seq(0x60 + 0x10 * d as u8)))
+            .collect(),
     }
 }
 
@@ -99,24 +107,42 @@ pub fn payload_unbound() -> Payload {
     let mut login = data(ItemKind::Login, "Example Mail");
     login.username = Some("alice@example.com".into());
     login.password = Some("Tr0ub4dor&3".into());
-    login.urls = vec!["https://mail.example.com/".into(), "https://example.com/login".into()];
+    login.urls = vec![
+        "https://mail.example.com/".into(),
+        "https://example.com/login".into(),
+    ];
     login.totp = Some("otpauth://totp/Example:alice?secret=JBSWY3DPEHPK3PXP&issuer=Example".into());
     login.folder = Some("Work".into());
     login.tags = vec!["email".into(), "work".into()];
     login.fields = vec![
-        Field { name: "Recovery PIN".into(), value: "4815".into(), concealed: true },
-        Field { name: "Account".into(), value: "12345".into(), concealed: false },
+        Field {
+            name: "Recovery PIN".into(),
+            value: "4815".into(),
+            concealed: true,
+        },
+        Field {
+            name: "Account".into(),
+            value: "12345".into(),
+            concealed: false,
+        },
     ];
     login.travel_safe = true;
     let mut login_item = item(1, login.clone());
     let mut old = login.clone();
     old.password = Some("hunter2".into());
-    login_item.history = vec![Revision { modified_at: 1_720_000_000, data: old }];
+    login_item.history = vec![Revision {
+        modified_at: 1_720_000_000,
+        data: old,
+    }];
 
     let mut note = data(ItemKind::SecureNote, "Long note \u{1F512}");
     note.notes = Some(filler("Grüße aus dem Tresor. ", 40_000));
     let mut card = data(ItemKind::Card, "Test card");
-    card.fields = vec![Field { name: "Number".into(), value: "4111 1111 1111 1111".into(), concealed: true }];
+    card.fields = vec![Field {
+        name: "Number".into(),
+        value: "4111 1111 1111 1111".into(),
+        concealed: true,
+    }];
     let mut card_item = item(3, card);
     card_item.trashed_at = Some(1_760_000_000);
     let mut api = data(ItemKind::ApiKey, "Build server token");
@@ -133,7 +159,11 @@ pub fn payload_unbound() -> Payload {
             item(5, api),
             item(6, data(ItemKind::SshKey, "deploy key")),
         ],
-        tombstones: vec![Tombstone { id: [0xEE; 16], deleted_at: 1_755_000_000, hlc: 42 }],
+        tombstones: vec![Tombstone {
+            id: [0xEE; 16],
+            deleted_at: 1_755_000_000,
+            hlc: 42,
+        }],
     }
 }
 
@@ -141,11 +171,18 @@ pub fn payload_small() -> Payload {
     let mut login = data(ItemKind::Login, "Router");
     login.username = Some("admin".into());
     login.password = Some("pa55w0rd".into());
-    Payload { exported_at: 1_761_000_000, items: vec![item(9, login)], tombstones: vec![] }
+    Payload {
+        exported_at: 1_761_000_000,
+        items: vec![item(9, login)],
+        tombstones: vec![],
+    }
 }
 
 pub fn creds<'a>(pw: &'a Password, sk: &'a SecretKey) -> Option<PasswordCredentials<'a>> {
-    Some(PasswordCredentials { password: pw, secret_key: sk })
+    Some(PasswordCredentials {
+        password: pw,
+        secret_key: sk,
+    })
 }
 
 pub fn pk(sk: &[u8; 32]) -> [u8; 65] {
@@ -287,27 +324,153 @@ fn build_negatives() -> Vec<Negative> {
     use Cred::*;
 
     let mut v: Vec<(&str, &str, Cred, Check, Vec<u8>)> = vec![
-        ("bitflip-magic", "bit 0 of byte 0 flipped", Password, Magic, flip(unbound.clone(), 0, 0x01)),
-        ("bitflip-version", "version 1 -> 0", Password, Version, flip(unbound.clone(), 5, 0x01)),
-        ("bitflip-flags-reserved", "reserved flag bit 1 set", Password, FlagsReserved, flip(unbound.clone(), 7, 0x02)),
-        ("bitflip-kdf-id", "kdf_id 0x01 -> 0x03", Password, KdfId, flip(unbound.clone(), 8, 0x02)),
-        ("bitflip-aead-id", "aead_id 0x01 -> 0x00", Password, AeadId, flip(unbound.clone(), 9, 0x01)),
-        ("bitflip-kem-id", "kem_id 0x0010 -> 0x0011", Password, KemId, flip(unbound.clone(), 11, 0x01)),
-        ("bitflip-salt", "one salt bit flipped", Password, SlotUnwrap, flip(unbound.clone(), 30, 0x10)),
-        ("bitflip-nonce-prefix", "one chunk-nonce-prefix bit flipped", Password, SlotUnwrap, flip(unbound.clone(), 60, 0x01)),
-        ("bitflip-reserved", "reserved trailing header byte non-zero", Password, Reserved, flip(unbound.clone(), 83, 0x01)),
-        ("bitflip-slot-type", "slot type 0x01 -> 0x05", Password, SlotTable, flip(unbound.clone(), 84, 0x04)),
-        ("bitflip-slot-nonce", "password slot nonce bit flipped", Password, SlotUnwrap, flip(unbound.clone(), 90, 0x80)),
-        ("bitflip-slot-wrapped", "wrapped VTK bit flipped", Password, SlotUnwrap, flip(unbound.clone(), 120, 0x01)),
-        ("bitflip-chunk0-body", "first ciphertext byte of chunk 0 flipped", Password, ChunkAuth, flip(unbound.clone(), chunk0, 0x01)),
-        ("bitflip-chunk1-tag", "last tag byte of final chunk flipped", Password, ChunkAuth, flip(unbound.clone(), len - 1, 0x80)),
-        ("bitflip-device-flag", "HAS_DEVICE_SLOTS cleared on a device-bound file", DeviceA, FlagsDeviceSlots, flip(device.clone(), 7, 0x01)),
-        ("bitflip-device-enc", "device slot HPKE enc bit flipped", DeviceA, SlotUnwrap, flip(device.clone(), 84 + 40, 0x01)),
-        ("bitflip-device-key-id", "device slot key_id bit flipped", DeviceA, SlotUnwrap, flip(device.clone(), 84 + 1, 0x01)),
-        ("truncated-header", "file cut to 50 bytes", Password, LengthMin, unbound[..50].to_vec()),
-        ("truncated-slot", "file ends inside the slot table", Password, SlotTable, unbound[..100].to_vec()),
-        ("truncated-tail", "last 100 bytes removed", Password, Length, unbound[..len - 100].to_vec()),
-        ("truncated-last-chunk", "final chunk removed, header unchanged", Password, Length, unbound[..chunk1].to_vec()),
+        (
+            "bitflip-magic",
+            "bit 0 of byte 0 flipped",
+            Password,
+            Magic,
+            flip(unbound.clone(), 0, 0x01),
+        ),
+        (
+            "bitflip-version",
+            "version 1 -> 0",
+            Password,
+            Version,
+            flip(unbound.clone(), 5, 0x01),
+        ),
+        (
+            "bitflip-flags-reserved",
+            "reserved flag bit 1 set",
+            Password,
+            FlagsReserved,
+            flip(unbound.clone(), 7, 0x02),
+        ),
+        (
+            "bitflip-kdf-id",
+            "kdf_id 0x01 -> 0x03",
+            Password,
+            KdfId,
+            flip(unbound.clone(), 8, 0x02),
+        ),
+        (
+            "bitflip-aead-id",
+            "aead_id 0x01 -> 0x00",
+            Password,
+            AeadId,
+            flip(unbound.clone(), 9, 0x01),
+        ),
+        (
+            "bitflip-kem-id",
+            "kem_id 0x0010 -> 0x0011",
+            Password,
+            KemId,
+            flip(unbound.clone(), 11, 0x01),
+        ),
+        (
+            "bitflip-salt",
+            "one salt bit flipped",
+            Password,
+            SlotUnwrap,
+            flip(unbound.clone(), 30, 0x10),
+        ),
+        (
+            "bitflip-nonce-prefix",
+            "one chunk-nonce-prefix bit flipped",
+            Password,
+            SlotUnwrap,
+            flip(unbound.clone(), 60, 0x01),
+        ),
+        (
+            "bitflip-reserved",
+            "reserved trailing header byte non-zero",
+            Password,
+            Reserved,
+            flip(unbound.clone(), 83, 0x01),
+        ),
+        (
+            "bitflip-slot-type",
+            "slot type 0x01 -> 0x05",
+            Password,
+            SlotTable,
+            flip(unbound.clone(), 84, 0x04),
+        ),
+        (
+            "bitflip-slot-nonce",
+            "password slot nonce bit flipped",
+            Password,
+            SlotUnwrap,
+            flip(unbound.clone(), 90, 0x80),
+        ),
+        (
+            "bitflip-slot-wrapped",
+            "wrapped VTK bit flipped",
+            Password,
+            SlotUnwrap,
+            flip(unbound.clone(), 120, 0x01),
+        ),
+        (
+            "bitflip-chunk0-body",
+            "first ciphertext byte of chunk 0 flipped",
+            Password,
+            ChunkAuth,
+            flip(unbound.clone(), chunk0, 0x01),
+        ),
+        (
+            "bitflip-chunk1-tag",
+            "last tag byte of final chunk flipped",
+            Password,
+            ChunkAuth,
+            flip(unbound.clone(), len - 1, 0x80),
+        ),
+        (
+            "bitflip-device-flag",
+            "HAS_DEVICE_SLOTS cleared on a device-bound file",
+            DeviceA,
+            FlagsDeviceSlots,
+            flip(device.clone(), 7, 0x01),
+        ),
+        (
+            "bitflip-device-enc",
+            "device slot HPKE enc bit flipped",
+            DeviceA,
+            SlotUnwrap,
+            flip(device.clone(), 84 + 40, 0x01),
+        ),
+        (
+            "bitflip-device-key-id",
+            "device slot key_id bit flipped",
+            DeviceA,
+            SlotUnwrap,
+            flip(device.clone(), 84 + 1, 0x01),
+        ),
+        (
+            "truncated-header",
+            "file cut to 50 bytes",
+            Password,
+            LengthMin,
+            unbound[..50].to_vec(),
+        ),
+        (
+            "truncated-slot",
+            "file ends inside the slot table",
+            Password,
+            SlotTable,
+            unbound[..100].to_vec(),
+        ),
+        (
+            "truncated-tail",
+            "last 100 bytes removed",
+            Password,
+            Length,
+            unbound[..len - 100].to_vec(),
+        ),
+        (
+            "truncated-last-chunk",
+            "final chunk removed, header unchanged",
+            Password,
+            Length,
+            unbound[..chunk1].to_vec(),
+        ),
         (
             "truncated-last-chunk-recounted",
             "final chunk removed and chunk_count patched to 1",
@@ -329,7 +492,13 @@ fn build_negatives() -> Vec<Negative> {
                 f
             },
         ),
-        ("appended-byte", "one zero byte appended", Password, Length, [unbound.clone(), vec![0]].concat()),
+        (
+            "appended-byte",
+            "one zero byte appended",
+            Password,
+            Length,
+            [unbound.clone(), vec![0]].concat(),
+        ),
         (
             "appended-chunk",
             "copy of the final chunk appended",
@@ -337,13 +506,51 @@ fn build_negatives() -> Vec<Negative> {
             Length,
             [unbound.clone(), unbound[chunk1..].to_vec()].concat(),
         ),
-        ("version-2", "version field set to 2", Password, Version, flip(unbound.clone(), 5, 0x03)),
-        ("argon2-lowered-m", "m lowered to 65536 KiB", Password, Argon2Params, set_be32(unbound.clone(), 12, 65_536)),
-        ("argon2-lowered-t", "t lowered to 1", Password, Argon2Params, set_be32(unbound.clone(), 16, 1)),
-        ("argon2-lowered-p", "p lowered to 1", Password, Argon2Params, set_be32(unbound.clone(), 20, 1)),
-        ("argon2-raised-m", "m raised to 1048576 KiB", Password, Argon2Params, set_be32(unbound.clone(), 12, 1_048_576)),
-        ("slot-count-0", "slot_count = 0", Password, SlotCount, { let mut f = unbound.clone(); f[75] = 0; f }),
-        ("slot-count-17", "slot_count = 17", Password, SlotCount, { let mut f = unbound.clone(); f[75] = 17; f }),
+        (
+            "version-2",
+            "version field set to 2",
+            Password,
+            Version,
+            flip(unbound.clone(), 5, 0x03),
+        ),
+        (
+            "argon2-lowered-m",
+            "m lowered to 65536 KiB",
+            Password,
+            Argon2Params,
+            set_be32(unbound.clone(), 12, 65_536),
+        ),
+        (
+            "argon2-lowered-t",
+            "t lowered to 1",
+            Password,
+            Argon2Params,
+            set_be32(unbound.clone(), 16, 1),
+        ),
+        (
+            "argon2-lowered-p",
+            "p lowered to 1",
+            Password,
+            Argon2Params,
+            set_be32(unbound.clone(), 20, 1),
+        ),
+        (
+            "argon2-raised-m",
+            "m raised to 1048576 KiB",
+            Password,
+            Argon2Params,
+            set_be32(unbound.clone(), 12, 1_048_576),
+        ),
+        ("slot-count-0", "slot_count = 0", Password, SlotCount, {
+            let mut f = unbound.clone();
+            f[75] = 0;
+            f
+        }),
+        ("slot-count-17", "slot_count = 17", Password, SlotCount, {
+            let mut f = unbound.clone();
+            f[75] = 17;
+            f
+        }),
         (
             "duplicate-password-slot",
             "password slot repeated, slot_count = 2",
@@ -357,12 +564,48 @@ fn build_negatives() -> Vec<Negative> {
                 f
             },
         ),
-        ("chunk-count-0", "chunk_count = 0", Password, Length, set_be32(unbound.clone(), 76, 0)),
-        ("chunk-count-4097", "chunk_count = 4097", Password, Length, set_be32(unbound.clone(), 76, 4097)),
-        ("wrong-password", "correct file, wrong password", WrongPassword, SlotUnwrap, unbound.clone()),
-        ("wrong-secret-key", "correct file, wrong Secret Key", WrongSecretKey, SlotUnwrap, unbound.clone()),
-        ("wrong-device", "device-bound file opened by a non-recipient device", DeviceC, SlotUnwrap, device.clone()),
-        ("password-on-device-bound", "device-bound file opened with password", Password, SlotUnwrap, device.clone()),
+        (
+            "chunk-count-0",
+            "chunk_count = 0",
+            Password,
+            Length,
+            set_be32(unbound.clone(), 76, 0),
+        ),
+        (
+            "chunk-count-4097",
+            "chunk_count = 4097",
+            Password,
+            Length,
+            set_be32(unbound.clone(), 76, 4097),
+        ),
+        (
+            "wrong-password",
+            "correct file, wrong password",
+            WrongPassword,
+            SlotUnwrap,
+            unbound.clone(),
+        ),
+        (
+            "wrong-secret-key",
+            "correct file, wrong Secret Key",
+            WrongSecretKey,
+            SlotUnwrap,
+            unbound.clone(),
+        ),
+        (
+            "wrong-device",
+            "device-bound file opened by a non-recipient device",
+            DeviceC,
+            SlotUnwrap,
+            device.clone(),
+        ),
+        (
+            "password-on-device-bound",
+            "device-bound file opened with password",
+            Password,
+            SlotUnwrap,
+            device.clone(),
+        ),
     ]
     .into_iter()
     .map(|(n, d, c, k, f)| (n, d, c, k, f))
@@ -374,9 +617,24 @@ fn build_negatives() -> Vec<Negative> {
     depth.extend(std::iter::repeat_n(0x81u8, 15)); // arrays at depth 2..=16
     depth.push(0x80); // depth 17
     let payload_rows: Vec<(&str, &str, Check, Vec<u8>)> = vec![
-        ("cbor-duplicate-key", "top-level map has key 1 twice", CborDuplicateKey, raw(&std::mem::take(&mut dup))),
-        ("cbor-depth-17", "array nested to depth 17", CborDepth, raw(&depth)),
-        ("nonzero-padding", "valid payload, one padding byte = 0x01", Padding, padded(&MIN_PAYLOAD, |b| b[1000] = 1)),
+        (
+            "cbor-duplicate-key",
+            "top-level map has key 1 twice",
+            CborDuplicateKey,
+            raw(&std::mem::take(&mut dup)),
+        ),
+        (
+            "cbor-depth-17",
+            "array nested to depth 17",
+            CborDepth,
+            raw(&depth),
+        ),
+        (
+            "nonzero-padding",
+            "valid payload, one padding byte = 0x01",
+            Padding,
+            padded(&MIN_PAYLOAD, |b| b[1000] = 1),
+        ),
         (
             "all-padding-chunk",
             "valid payload followed by an entire chunk of zero padding",
@@ -389,34 +647,103 @@ fn build_negatives() -> Vec<Negative> {
                 container::export_padded(&buf, creds(&pw, &sk), &[], &randomness(0)).unwrap()
             },
         ),
-        ("cbor-non-shortest", "uint 1 encoded in two bytes", CborDeterministic, raw(&[0xa3, 0x01, 0x18, 0x01, 0x02, 0x00, 0x03, 0x80])),
-        ("cbor-indefinite", "items array uses indefinite length", CborDeterministic, raw(&[0xa3, 0x01, 0x01, 0x02, 0x00, 0x03, 0x9f, 0xff])),
-        ("cbor-unsorted-keys", "map keys out of order", CborDeterministic, raw(&[0xa3, 0x02, 0x00, 0x01, 0x01, 0x03, 0x80])),
-        ("cbor-float", "exported_at is a float", CborType, raw(&[0xa3, 0x01, 0x01, 0x02, 0xf9, 0x00, 0x00, 0x03, 0x80])),
-        ("cbor-tag", "exported_at is tagged", CborType, raw(&[0xa3, 0x01, 0x01, 0x02, 0xc1, 0x00, 0x03, 0x80])),
-        ("cbor-null", "exported_at is null", CborType, raw(&[0xa3, 0x01, 0x01, 0x02, 0xf6, 0x03, 0x80])),
-        ("cbor-unknown-key", "top-level key 5", CborUnknownKey, raw(&[0xa4, 0x01, 0x01, 0x02, 0x00, 0x03, 0x80, 0x05, 0x00])),
-        ("cbor-missing-key", "items key absent", CborMissingKey, raw(&[0xa2, 0x01, 0x01, 0x02, 0x00])),
-        ("cbor-empty-optional", "tombstones present but empty", CborEmptyOptional, raw(&[0xa4, 0x01, 0x01, 0x02, 0x00, 0x03, 0x80, 0x04, 0x80])),
-        ("cbor-truncated", "text string length runs past the end of the plaintext", CborWellformed, raw(&[0xa3, 0x01, 0x01, 0x02, 0x00, 0x03, 0x81, 0x7a, 0x00, 0x10, 0x00, 0x00])),
+        (
+            "cbor-non-shortest",
+            "uint 1 encoded in two bytes",
+            CborDeterministic,
+            raw(&[0xa3, 0x01, 0x18, 0x01, 0x02, 0x00, 0x03, 0x80]),
+        ),
+        (
+            "cbor-indefinite",
+            "items array uses indefinite length",
+            CborDeterministic,
+            raw(&[0xa3, 0x01, 0x01, 0x02, 0x00, 0x03, 0x9f, 0xff]),
+        ),
+        (
+            "cbor-unsorted-keys",
+            "map keys out of order",
+            CborDeterministic,
+            raw(&[0xa3, 0x02, 0x00, 0x01, 0x01, 0x03, 0x80]),
+        ),
+        (
+            "cbor-float",
+            "exported_at is a float",
+            CborType,
+            raw(&[0xa3, 0x01, 0x01, 0x02, 0xf9, 0x00, 0x00, 0x03, 0x80]),
+        ),
+        (
+            "cbor-tag",
+            "exported_at is tagged",
+            CborType,
+            raw(&[0xa3, 0x01, 0x01, 0x02, 0xc1, 0x00, 0x03, 0x80]),
+        ),
+        (
+            "cbor-null",
+            "exported_at is null",
+            CborType,
+            raw(&[0xa3, 0x01, 0x01, 0x02, 0xf6, 0x03, 0x80]),
+        ),
+        (
+            "cbor-unknown-key",
+            "top-level key 5",
+            CborUnknownKey,
+            raw(&[0xa4, 0x01, 0x01, 0x02, 0x00, 0x03, 0x80, 0x05, 0x00]),
+        ),
+        (
+            "cbor-missing-key",
+            "items key absent",
+            CborMissingKey,
+            raw(&[0xa2, 0x01, 0x01, 0x02, 0x00]),
+        ),
+        (
+            "cbor-empty-optional",
+            "tombstones present but empty",
+            CborEmptyOptional,
+            raw(&[0xa4, 0x01, 0x01, 0x02, 0x00, 0x03, 0x80, 0x04, 0x80]),
+        ),
+        (
+            "cbor-truncated",
+            "text string length runs past the end of the plaintext",
+            CborWellformed,
+            raw(&[
+                0xa3, 0x01, 0x01, 0x02, 0x00, 0x03, 0x81, 0x7a, 0x00, 0x10, 0x00, 0x00,
+            ]),
+        ),
         ("cbor-limit", "text string of 65537 bytes", CborLimit, {
-            let mut b = vec![0xa3, 0x01, 0x01, 0x02, 0x00, 0x03, 0x81, 0x7a, 0x00, 0x01, 0x00, 0x01];
+            let mut b = vec![
+                0xa3, 0x01, 0x01, 0x02, 0x00, 0x03, 0x81, 0x7a, 0x00, 0x01, 0x00, 0x01,
+            ];
             b.resize(b.len() + 65_537, 0x61);
             raw(&b)
         }),
-        ("payload-version-2", "payload_version = 2", PayloadVersion, raw(&[0xa3, 0x01, 0x02, 0x02, 0x00, 0x03, 0x80])),
+        (
+            "payload-version-2",
+            "payload_version = 2",
+            PayloadVersion,
+            raw(&[0xa3, 0x01, 0x02, 0x02, 0x00, 0x03, 0x80]),
+        ),
     ];
     let mut out: Vec<Negative> = v
         .drain(..)
-        .map(|(n, d, cred, check, file)| Negative { name: n.into(), description: d.into(), cred, check, file })
+        .map(|(n, d, cred, check, file)| Negative {
+            name: n.into(),
+            description: d.into(),
+            cred,
+            check,
+            file,
+        })
         .collect();
-    out.extend(payload_rows.into_iter().map(|(n, d, check, file)| Negative {
-        name: n.into(),
-        description: d.into(),
-        cred: Password,
-        check,
-        file,
-    }));
+    out.extend(
+        payload_rows
+            .into_iter()
+            .map(|(n, d, check, file)| Negative {
+                name: n.into(),
+                description: d.into(),
+                cred: Password,
+                check,
+                file,
+            }),
+    );
     out
 }
 
@@ -428,14 +755,19 @@ pub fn reject(n: &Negative) -> Check {
     let result = match n.cred {
         Cred::Password => import_with_password(&n.file, &pw, &sk),
         Cred::WrongPassword => import_with_password(&n.file, &Password::new("wrong").unwrap(), &sk),
-        Cred::WrongSecretKey => import_with_password(&n.file, &pw, &SecretKey::from_bytes([0xFF; 16])),
+        Cred::WrongSecretKey => {
+            import_with_password(&n.file, &pw, &SecretKey::from_bytes([0xFF; 16]))
+        }
         Cred::DeviceA => import_with_device(&n.file, &SoftDevice::new(&DEVICE_A_SK)),
         Cred::DeviceC => import_with_device(&n.file, &SoftDevice::new(&DEVICE_C_SK)),
     };
     match result {
         Ok(_) => panic!("negative vector {} was accepted", n.name),
         Err(Error::Rejected(c)) => c,
-        Err(e) => panic!("negative vector {} failed outside a named check: {e}", n.name),
+        Err(e) => panic!(
+            "negative vector {} failed outside a named check: {e}",
+            n.name
+        ),
     }
 }
 
@@ -471,14 +803,22 @@ pub fn manifest_json() -> String {
     let r0 = randomness(2);
     let mut s = String::from("{\n");
     s.push_str("  \"format\": \"VTF1\",\n");
-    s.push_str("  \"note\": \"Deliberate public test fixtures. Never use these values for real data.\",\n");
-    s.push_str(&format!("  \"secret_key_hex\": \"{}\",\n", hex(&SECRET_KEY)));
+    s.push_str(
+        "  \"note\": \"Deliberate public test fixtures. Never use these values for real data.\",\n",
+    );
+    s.push_str(&format!(
+        "  \"secret_key_hex\": \"{}\",\n",
+        hex(&SECRET_KEY)
+    ));
     s.push_str(&format!(
         "  \"secret_key_display\": {},\n",
         json_str(&SecretKey::from_bytes(SECRET_KEY).to_display())
     ));
     s.push_str("  \"devices\": {\n");
-    for (i, (name, d)) in [("a", DEVICE_A_SK), ("b", DEVICE_B_SK), ("c", DEVICE_C_SK)].iter().enumerate() {
+    for (i, (name, d)) in [("a", DEVICE_A_SK), ("b", DEVICE_B_SK), ("c", DEVICE_C_SK)]
+        .iter()
+        .enumerate()
+    {
         s.push_str(&format!(
             "    \"{name}\": {{\"private_key_hex\": \"{}\", \"public_key_hex\": \"{}\"}}{}\n",
             hex(d),
@@ -489,9 +829,15 @@ pub fn manifest_json() -> String {
     s.push_str("  },\n");
     s.push_str("  \"randomness\": {\n");
     s.push_str(&format!("    \"salt\": \"{}\",\n", hex(&r0.salt)));
-    s.push_str(&format!("    \"chunk_nonce_prefix\": \"{}\",\n", hex(&r0.chunk_nonce_prefix)));
+    s.push_str(&format!(
+        "    \"chunk_nonce_prefix\": \"{}\",\n",
+        hex(&r0.chunk_nonce_prefix)
+    ));
     s.push_str(&format!("    \"vtk\": \"{}\",\n", hex(&r0.vtk)));
-    s.push_str(&format!("    \"password_slot_nonce\": \"{}\",\n", hex(&r0.password_slot_nonce)));
+    s.push_str(&format!(
+        "    \"password_slot_nonce\": \"{}\",\n",
+        hex(&r0.password_slot_nonce)
+    ));
     s.push_str("    \"device_slots\": [\n");
     for (i, (ikm, nonce)) in r0.device.iter().enumerate() {
         s.push_str(&format!(
