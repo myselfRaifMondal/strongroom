@@ -1,0 +1,27 @@
+[package]
+name = "strongroom-ffi"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Stable C ABI / UniFFI boundary for the Strongroom native apps"
+
+[lib]
+crate-type = ["lib", "staticlib", "cdylib"]
+name = "strongroom_ffi"
+
+[dependencies]
+vtf-core = { path = "../vtf-core" }
+vault-core = { path = "../vault-core" }
+uniffi = "=0.31.0"
+
+[build-dependencies]
+uniffi = { version = "=0.31.0", features = ["build"] }
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli"]

@@ -1,0 +1,17 @@
+/target
+**/*.rs.bk
+.DS_Store
+*.sqlite
+*.db
+*.vtf
+!vectors/**/*.vtf
+local.properties
+.gradle/
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+bin/
+obj/
+.venv/
+__pycache__/

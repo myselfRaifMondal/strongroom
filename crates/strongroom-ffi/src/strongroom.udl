@@ -1,0 +1,307 @@
+// Strongroom FFI contract (UniFFI UDL).
+//
+// FROZEN at the end of Phase 1. Any change after that point must be reported
+// to the project owner before it is made. The Rust mirror of this contract is
+// the `StrongroomApi` / `VaultApi` traits in `src/contract.rs`; the two must
+// stay in lockstep.
+//
+// Conventions:
+// - All timestamps are Unix seconds (i64), supplied by the caller so the core
+//   never reads the wall clock and tests are deterministic.
+// - Every unlock failure is `StrongroomError.UnlockFailed`, with no detail.
+//   The UI must never learn which of password, Secret Key or device key was
+//   wrong.
+// - No raw vault key ever crosses this boundary. Biometric unlock goes through
+//   the `DeviceKeyAgreement` callback: the platform performs one P-256 ECDH
+//   inside secure hardware and returns the shared secret.
+
+namespace strongroom {
+  // New 128-bit Secret Key, formatted for display ("SR1-XXXXX-...").
+  string generate_secret_key();
+
+  [Throws=StrongroomError]
+  string generate_password(PasswordPolicy policy);
+
+  [Throws=StrongroomError]
+  string generate_passphrase(PassphrasePolicy policy);
+
+  StrengthReport estimate_strength(string password);
+
+  // `secret` is a base32 TOTP secret or an otpauth:// URI.
+  [Throws=StrongroomError]
+  TotpCode totp_code(string secret, i64 now);
+
+  // Parses the public, unauthenticated parts of a VTF file without any key.
+  [Throws=StrongroomError]
+  VtfInfo vtf_inspect(bytes file);
+
+  // QR pairing: encodes this device's public key for display as a QR code.
+  string pairing_payload(bytes device_public_key);
+
+  // Decodes a scanned pairing QR payload; returns the 65-byte SEC1 public key.
+  [Throws=StrongroomError]
+  PairedDevice parse_pairing_payload(string payload);
+};
+
+[Error]
+interface StrongroomError {
+  // Wrong password, Secret Key or device key. Deliberately carries no detail.
+  UnlockFailed();
+  // A file failed a structural or authentication check; `check` names it.
+  FormatRejected(string check);
+  InvalidInput(string reason);
+  NotFound();
+  Locked();
+  // Feature unavailable on this platform/OS level (e.g. Android < API 31).
+  Unsupported(string reason);
+  Storage(string reason);
+  Internal();
+};
+
+// Implemented by each platform over secure hardware (Secure Enclave,
+// TPM via Windows Hello/CNG, Android Keystore). Key is P-256, non-exportable.
+callback interface DeviceKeyAgreement {
+  // 65-byte uncompressed SEC1 public key.
+  bytes public_key();
+  // Raw ECDH shared secret (32-byte x-coordinate) with `peer_public_key`
+  // (65-byte uncompressed SEC1). May trigger a biometric prompt.
+  [Throws=StrongroomError]
+  bytes agree(bytes peer_public_key);
+};
+
+enum ItemKind { "Login", "SecureNote", "Card", "Identity", "ApiKey", "SshKey" };
+
+enum CsvSource { "Bitwarden", "OnePassword", "LastPass", "Chrome" };
+
+enum PasswordRequiredReason {
+  "NotRequired",
+  "FirstLaunchAfterReboot",
+  "TooManyBiometricFailures",
+  "PeriodicCheck",
+  "BiometricEnrollmentChanged",
+  "NoBiometricKey",
+};
+
+dictionary CustomField {
+  string name;
+  string value;
+  boolean concealed;
+};
+
+dictionary ItemInput {
+  ItemKind kind;
+  string title;
+  string? username;
+  string? password;
+  sequence<string> urls;
+  string? notes;
+  string? totp;
+  string? folder;
+  sequence<string> tags;
+  sequence<CustomField> fields;
+  boolean travel_safe;
+};
+
+dictionary Item {
+  string id;
+  ItemInput data;
+  i64 created_at;
+  i64 modified_at;
+};
+
+dictionary ItemSummary {
+  string id;
+  ItemKind kind;
+  string title;
+  string? subtitle;
+  string? folder;
+  sequence<string> tags;
+  sequence<string> urls;
+  i64 modified_at;
+  boolean has_totp;
+};
+
+dictionary ItemRevision {
+  i64 modified_at;
+  ItemInput data;
+};
+
+dictionary TrashEntry {
+  ItemSummary item;
+  i64 deleted_at;
+  i64 purge_at;
+};
+
+dictionary PasswordPolicy {
+  u8 length;
+  boolean lowercase;
+  boolean uppercase;
+  boolean digits;
+  boolean symbols;
+  boolean avoid_ambiguous;
+};
+
+dictionary PassphrasePolicy {
+  u8 words;
+  string separator;
+  boolean capitalize;
+  boolean include_number;
+};
+
+dictionary StrengthReport {
+  // 0 (very weak) ..= 4 (very strong)
+  u8 score;
+  f64 entropy_bits;
+  sequence<string> warnings;
+};
+
+dictionary TotpCode {
+  string code;
+  u32 period;
+  u32 seconds_remaining;
+};
+
+dictionary HealthReport {
+  // 0 ..= 100
+  u8 security_score;
+  sequence<string> reused_item_ids;
+  sequence<string> weak_item_ids;
+  sequence<string> old_item_ids;
+};
+
+dictionary VtfInfo {
+  u16 version;
+  u8 password_slots;
+  u8 device_slots;
+  u32 chunk_count;
+};
+
+dictionary ImportSummary {
+  u32 added;
+  u32 updated;
+  u32 unchanged;
+  u32 conflicts;
+};
+
+dictionary PairedDevice {
+  bytes public_key;
+  // Short human-comparable fingerprint shown on both devices.
+  string fingerprint;
+};
+
+// Non-secret unlock-policy state, readable while locked. Enforces: password
+// on first launch after reboot, after 5 failed biometric attempts, every 7
+// days, and whenever the OS biometric enrollment set changes.
+interface UnlockGate {
+  [Throws=StrongroomError]
+  constructor(string state_path);
+
+  PasswordRequiredReason check(i64 now, boolean rebooted_since_last_password, boolean enrollment_changed, boolean has_device_key);
+
+  [Throws=StrongroomError]
+  void record_password_unlock(i64 now);
+
+  [Throws=StrongroomError]
+  void record_biometric_failure();
+
+  [Throws=StrongroomError]
+  void record_biometric_success();
+};
+
+interface Vault {
+  [Throws=StrongroomError, Name=create]
+  constructor(string path, string password, string secret_key, i64 now);
+
+  [Throws=StrongroomError, Name=unlock_with_password]
+  constructor(string path, string password, string secret_key, i64 now);
+
+  // Decoy support: tries each path in order with the same credentials and
+  // returns the first that unlocks. Timing and error are identical whether
+  // zero, one or several paths match.
+  [Throws=StrongroomError, Name=unlock_first_matching]
+  constructor(sequence<string> paths, string password, string secret_key, i64 now);
+
+  // `device_wrapped_key` was produced by `wrap_vault_key_for_device`.
+  [Throws=StrongroomError, Name=unlock_with_device_key]
+  constructor(string path, bytes device_wrapped_key, DeviceKeyAgreement device);
+
+  void lock();
+
+  boolean is_locked();
+
+  // HPKE-seals the vault key to the device's hardware public key. The result
+  // is safe to store in the platform keychain / credential store.
+  [Throws=StrongroomError]
+  bytes wrap_vault_key_for_device(bytes device_public_key);
+
+  [Throws=StrongroomError]
+  string add_item(ItemInput input, i64 now);
+
+  [Throws=StrongroomError]
+  void update_item(string id, ItemInput input, i64 now);
+
+  [Throws=StrongroomError]
+  Item get_item(string id);
+
+  // Case-insensitive match on title, username, URLs, tags, folder and
+  // non-concealed field names. Empty query lists everything (filtered).
+  [Throws=StrongroomError]
+  sequence<ItemSummary> search(string query, string? folder, string? tag);
+
+  // Autofill / credential-provider lookup by registrable domain.
+  [Throws=StrongroomError]
+  sequence<ItemSummary> match_domain(string url_or_domain);
+
+  [Throws=StrongroomError]
+  sequence<ItemRevision> item_history(string id);
+
+  [Throws=StrongroomError]
+  void trash_item(string id, i64 now);
+
+  [Throws=StrongroomError]
+  void restore_item(string id, i64 now);
+
+  [Throws=StrongroomError]
+  sequence<TrashEntry> list_trash();
+
+  [Throws=StrongroomError]
+  u32 purge_expired_trash(i64 now);
+
+  [Throws=StrongroomError]
+  sequence<string> list_folders();
+
+  [Throws=StrongroomError]
+  sequence<string> list_tags();
+
+  [Throws=StrongroomError]
+  TotpCode item_totp(string id, i64 now);
+
+  [Throws=StrongroomError]
+  HealthReport password_health(i64 now);
+
+  // Travel mode: when on, items not marked travel_safe are removed from this
+  // device's store (kept only in exported/backup files).
+  [Throws=StrongroomError]
+  void set_travel_mode(boolean enabled, i64 now);
+
+  [Throws=StrongroomError]
+  boolean travel_mode();
+
+  // Export reuses the master password + Secret Key (password slot) and adds
+  // one device slot per recipient public key (65-byte SEC1 each, max 15).
+  [Throws=StrongroomError]
+  bytes export_vtf(string password, string secret_key, sequence<bytes> device_recipients, i64 now);
+
+  [Throws=StrongroomError]
+  ImportSummary import_vtf(bytes file, string password, string secret_key, i64 now);
+
+  [Throws=StrongroomError]
+  ImportSummary import_vtf_with_device_key(bytes file, DeviceKeyAgreement device, i64 now);
+
+  [Throws=StrongroomError]
+  ImportSummary import_csv(CsvSource source, string csv, i64 now);
+
+  // Encrypted local backup: a consistent copy of the encrypted store.
+  [Throws=StrongroomError]
+  void backup_to(string path);
+};

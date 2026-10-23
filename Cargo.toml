@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = ["crates/vtf-core", "crates/vault-core", "crates/strongroom-ffi"]
+
+[workspace.package]
+edition = "2021"
+license = "UNLICENSED"
+publish = false
+rust-version = "1.85"
+
+[profile.release]
+panic = "abort"
+lto = true
+codegen-units = 1
+debug = false
+strip = true
