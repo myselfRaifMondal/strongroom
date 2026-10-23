@@ -11,7 +11,7 @@ namespace Strongroom.Core.Services;
 /// </summary>
 public static class CoreThread
 {
-    public const int StackSize = 512 * 1024 * 1024; // EXPERIMENT (integration branch only)
+    public const int StackSize = 16 * 1024 * 1024;
 
     public static T Run<T>(Func<T> func)
     {
