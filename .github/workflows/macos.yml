@@ -4,7 +4,7 @@ name: macos
 
 on:
   push:
-    branches: ["main", "phase2/macos", "phase2/macos-*"]
+    branches: ["main", "phase2/macos", "phase2/macos-*", "phase3/*"]
     paths:
       - "apps/macos/**"
       - "crates/**"
@@ -30,9 +30,9 @@ jobs:
     name: build, test, app bundle + launch, CLI round-trip
     runs-on: macos-latest
     env:
-      # The core FFI bodies are stubs on main until phase2/core-vault lands.
-      # On an integration branch an Unsupported result is a failure.
-      STRONGROOM_REQUIRE_CORE: ${{ github.ref_name == 'phase2/macos-with-core' && '1' || '0' }}
+      
+      # The real core is on main: an Unsupported result is a failure.
+      STRONGROOM_REQUIRE_CORE: "1"
     steps:
       - uses: actions/checkout@v4
 

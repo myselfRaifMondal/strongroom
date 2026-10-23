@@ -708,13 +708,20 @@ fn build_negatives() -> Vec<Negative> {
                 0xa3, 0x01, 0x01, 0x02, 0x00, 0x03, 0x81, 0x7a, 0x00, 0x10, 0x00, 0x00,
             ]),
         ),
-        ("cbor-limit", "text string of 65537 bytes", CborLimit, {
-            let mut b = vec![
-                0xa3, 0x01, 0x01, 0x02, 0x00, 0x03, 0x81, 0x7a, 0x00, 0x01, 0x00, 0x01,
-            ];
-            b.resize(b.len() + 65_537, 0x61);
-            raw(&b)
-        }),
+        (
+            "cbor-limit",
+            "otherwise valid item whose title is 65537 bytes",
+            CborLimit,
+            {
+                // {1:1, 2:0, 3:[{1:h'00..00', 2:0, 3:"a"*65537, 4:0, 5:0, 6:0}]}
+                let mut b = vec![0xa3, 0x01, 0x01, 0x02, 0x00, 0x03, 0x81, 0xa6, 0x01, 0x50];
+                b.extend([0u8; 16]);
+                b.extend([0x02, 0x00, 0x03, 0x7a, 0x00, 0x01, 0x00, 0x01]);
+                b.resize(b.len() + 65_537, 0x61);
+                b.extend([0x04, 0x00, 0x05, 0x00, 0x06, 0x00]);
+                raw(&b)
+            },
+        ),
         (
             "payload-version-2",
             "payload_version = 2",

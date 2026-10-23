@@ -45,15 +45,7 @@ WRONG_SECRET_KEY = b"\xff" * 16
 # REJECTED, and rejected by exactly the check recorded here; any other
 # outcome fails. `--strict` makes every dispute a failure. The vectors are
 # frozen and owned elsewhere; disputes are reported, never "fixed" here.
-DISPUTED: dict[str, tuple[str, str]] = {
-    "cbor-limit": (
-        "cbor-type",
-        "payload is {1:1, 2:0, 3:[tstr(65537)]}: the items array holds a text string where an Item "
-        "map is required, so the vector carries two faults (21 cbor-type and 25 cbor-limit). "
-        "SPEC-VTF 7 numbers cbor-type before cbor-limit; vtf-core reports cbor-limit only because "
-        "its generic decoder enforces the 6.4 text limit before schema typing.",
-    ),
-}
+DISPUTED: dict[str, tuple[str, str]] = {}
 
 
 def parse_secret_key_display(s: str) -> bytes:

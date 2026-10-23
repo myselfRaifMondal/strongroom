@@ -72,7 +72,7 @@ jobs:
         run: uv run --locked --group dev pytest -q
       - name: verify every vector (sequential; Argon2id 256 MiB per derivation)
         working-directory: reference
-        run: uv run --locked python -m vtf_ref.verify vectors/
+        run: uv run --locked python -m vtf_ref.verify vectors/ --strict
 
   fuzz:
     name: fuzz smoke (${{ matrix.target }}, 60 s)

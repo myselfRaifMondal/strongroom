@@ -1,0 +1,264 @@
+# Cross-platform VTF round-trip (Phase 3 acceptance).
+#
+# Stage 1: macOS, Windows and Android each create a throwaway vault, add a
+#          fixed set of items and export a VTF (password + Secret Key slot).
+# Stage 2: every platform imports all three files into a fresh vault and
+#          checks the imported titles equal the exporter's list exactly.
+#
+# The throwaway credentials are generated per run and travel only inside this
+# run's private artifacts (retention: 1 day). Nothing is committed.
+name: crossplatform
+
+on:
+  push:
+    branches: ["main", "phase3/*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crossplatform-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  UNIFFI_BINDGEN_CS_TAG: "v0.11.1+v0.31.0"
+  NDK_VERSION: "27.2.12479018"
+  CARGO_NDK_VERSION: "4.1.2"
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  # ------------------------------------------------------------------ macOS
+  macos-export:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: crossplatform-macos
+      - name: Build core, bindings, CLI
+        run: |
+          apps/macos/scripts/build-core.sh
+          apps/macos/scripts/build-app.sh
+      - name: Export
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli=apps/macos/out/strongroom-mac-cli
+          out="$RUNNER_TEMP/vtf"; mkdir -p "$out"; v="$RUNNER_TEMP/src.srdb"
+          export STRONGROOM_PASSWORD="$(openssl rand -hex 24)"
+          printf '%s' "$STRONGROOM_PASSWORD" > "$out/macos.password.txt"
+          "$cli" create --vault "$v" --secret-key-out "$out/macos.secret-key.txt"
+          export STRONGROOM_SECRET_KEY="$(cat "$out/macos.secret-key.txt")"
+          "$cli" add --vault "$v" --title "macOS: Example Login" --username alice@example.com --url https://example.com/ --totp JBSWY3DPEHPK3PXP
+          "$cli" add --vault "$v" --title "macOS: Ünïcödé ✓ note" --notes "exported on macOS"
+          "$cli" add --vault "$v" --title "macOS: API key" --notes "tok_probe_0000"
+          "$cli" export --vault "$v" --out "$out/macos.vtf"
+          "$cli" list --vault "$v" | sed -n 's/^TITLE: //p' > "$out/macos.titles.txt"
+          "$cli" inspect --in "$out/macos.vtf"
+          echo "--- exported titles"; cat "$out/macos.titles.txt"
+          shasum -a 256 "$out/macos.vtf"
+      - uses: actions/upload-artifact@v4
+        with: { name: vtf-macos, path: "${{ runner.temp }}/vtf/", retention-days: 1, if-no-files-found: error }
+      - uses: actions/upload-artifact@v4
+        with: { name: cli-macos, path: apps/macos/out/strongroom-mac-cli, retention-days: 1, if-no-files-found: error }
+
+  # ---------------------------------------------------------------- Windows
+  windows-cli:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "8.0.x" }
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: crossplatform-windows
+      - name: Build DLL
+        shell: pwsh
+        run: apps/windows/scripts/build-native.ps1 -Target x86_64-pc-windows-msvc
+      - name: Cache uniffi-bindgen-cs
+        id: cache-bindgen
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/uniffi-bindgen-cs.exe
+          key: uniffi-bindgen-cs-${{ env.UNIFFI_BINDGEN_CS_TAG }}-windows
+      - name: Install uniffi-bindgen-cs
+        if: steps.cache-bindgen.outputs.cache-hit != 'true'
+        run: cargo install uniffi-bindgen-cs --git https://github.com/NordSecurity/uniffi-bindgen-cs --tag "${{ env.UNIFFI_BINDGEN_CS_TAG }}" --locked
+      - name: Generate bindings + publish CLI
+        shell: pwsh
+        run: |
+          apps/windows/scripts/gen-bindings.ps1
+          dotnet publish apps/windows/src/Strongroom.Cli/Strongroom.Cli.csproj -c Release -r win-x64 --self-contained false -o apps/windows/out/cli
+      - uses: actions/upload-artifact@v4
+        with: { name: cli-windows, path: apps/windows/out/cli/, retention-days: 1, if-no-files-found: error }
+
+  windows-export:
+    needs: windows-cli
+    runs-on: windows-latest
+    steps:
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "8.0.x" }
+      - uses: actions/download-artifact@v4
+        with: { name: cli-windows, path: cli }
+      - name: Export
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli=./cli/strongroom-cli.exe
+          out="$RUNNER_TEMP/vtf"; mkdir -p "$out"; v="$RUNNER_TEMP/src.srdb"
+          export STRONGROOM_PASSWORD="$(openssl rand -hex 24)"
+          printf '%s' "$STRONGROOM_PASSWORD" > "$out/windows.password.txt"
+          "$cli" create --vault "$v" --secret-key-out "$out/windows.secret-key.txt"
+          export STRONGROOM_SECRET_KEY="$(tr -d '\r\n' < "$out/windows.secret-key.txt")"
+          "$cli" add --vault "$v" --title "Windows: Example Login" --username alice@example.com --url https://example.com/ --totp JBSWY3DPEHPK3PXP
+          "$cli" add --vault "$v" --title "Windows: Ünïcödé ✓ note" --notes "exported on Windows"
+          "$cli" add --vault "$v" --title "Windows: API key" --notes "tok_probe_0000"
+          "$cli" export --vault "$v" --out "$out/windows.vtf"
+          "$cli" list --vault "$v" | tr -d '\r' | sed -n 's/^TITLE: //p' > "$out/windows.titles.txt"
+          "$cli" inspect --in "$out/windows.vtf"
+          echo "--- exported titles"; cat "$out/windows.titles.txt"
+          sha256sum "$out/windows.vtf"
+      - uses: actions/upload-artifact@v4
+        with: { name: vtf-windows, path: "${{ runner.temp }}/vtf/", retention-days: 1, if-no-files-found: error }
+
+  # ---------------------------------------------------------------- Android
+  android-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      STRONGROOM_ABIS: "x86_64"
+      STRONGROOM_RUST_PROFILE: "debug"
+      CARGO_BUILD_JOBS: "4"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - run: rustup target add x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: crossplatform-android
+      - name: Android NDK + cargo-ndk
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${NDK_VERSION}" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          cargo ndk --version 2>/dev/null | grep -q "${CARGO_NDK_VERSION}" || cargo install cargo-ndk --locked --version "${CARGO_NDK_VERSION}"
+      - name: Build .so + Kotlin bindings
+        run: apps/android/scripts/build-rust.sh
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build APKs
+        working-directory: apps/android
+        run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest -Pstrongroom.skipRust=true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apks-android
+          retention-days: 1
+          if-no-files-found: error
+          path: |
+            apps/android/app/build/outputs/apk/debug/app-debug.apk
+            apps/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+  android-export:
+    needs: android-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: apks-android, path: apks }
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Export on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          ram-size: 4096M
+          disable-animations: true
+          script: |
+            adb install -r -t $(find apks -name app-debug.apk) && adb install -r -t $(find apks -name app-debug-androidTest.apk) && pw="$(openssl rand -hex 24)" && mkdir -p "$RUNNER_TEMP/vtf" && printf '%s' "$pw" > "$RUNNER_TEMP/vtf/android.password.txt" && apps/android/scripts/export-vtf.sh "$RUNNER_TEMP/vtf" "$pw" && sha256sum "$RUNNER_TEMP/vtf/android.vtf"
+      - uses: actions/upload-artifact@v4
+        with: { name: vtf-android, path: "${{ runner.temp }}/vtf/", retention-days: 1, if-no-files-found: error }
+
+  # ---------------------------------------------------------------- imports
+  macos-import:
+    needs: [macos-export, windows-export, android-export]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: cli-macos, path: cli }
+      - uses: actions/download-artifact@v4
+        with: { pattern: vtf-*, path: vtf, merge-multiple: true }
+      - name: Import every platform's file
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x cli/strongroom-mac-cli
+          fail=0
+          for src in macos windows android; do
+            export STRONGROOM_PASSWORD="$(cat vtf/$src.password.txt)"
+            export STRONGROOM_SECRET_KEY="$(tr -d '\r\n' < vtf/$src.secret-key.txt)"
+            cli/strongroom-mac-cli import --in vtf/$src.vtf | tee got.txt
+            sed -n 's/^TITLE: //p' got.txt | LC_ALL=C sort > got.sorted
+            tr -d '\r' < vtf/$src.titles.txt | LC_ALL=C sort > want.sorted
+            if diff want.sorted got.sorted; then echo "ROUNDTRIP $src -> macos: OK ($(wc -l < got.sorted | tr -d ' ') items)"
+            else echo "ROUNDTRIP $src -> macos: MISMATCH"; fail=1; fi
+          done
+          exit $fail
+
+  windows-import:
+    needs: [macos-export, windows-export, android-export]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "8.0.x" }
+      - uses: actions/download-artifact@v4
+        with: { name: cli-windows, path: cli }
+      - uses: actions/download-artifact@v4
+        with: { pattern: vtf-*, path: vtf, merge-multiple: true }
+      - name: Import every platform's file
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail=0
+          for src in macos windows android; do
+            export STRONGROOM_PASSWORD="$(cat vtf/$src.password.txt)"
+            export STRONGROOM_SECRET_KEY="$(tr -d '\r\n' < vtf/$src.secret-key.txt)"
+            ./cli/strongroom-cli.exe import --in vtf/$src.vtf | tr -d '\r' | tee got.txt
+            sed -n 's/^TITLE: //p' got.txt | LC_ALL=C sort > got.sorted
+            tr -d '\r' < vtf/$src.titles.txt | LC_ALL=C sort > want.sorted
+            if diff want.sorted got.sorted; then echo "ROUNDTRIP $src -> windows: OK ($(wc -l < got.sorted | tr -d ' ') items)"
+            else echo "ROUNDTRIP $src -> windows: MISMATCH"; fail=1; fi
+          done
+          exit $fail
+
+  android-import:
+    needs: [macos-export, windows-export, android-export]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: apks-android, path: apks }
+      - uses: actions/download-artifact@v4
+        with: { pattern: vtf-*, path: vtf, merge-multiple: true }
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Import on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          ram-size: 4096M
+          disable-animations: true
+          script: |
+            adb install -r -t $(find apks -name app-debug.apk) && adb install -r -t $(find apks -name app-debug-androidTest.apk) && bash .github/scripts/android-import-all.sh vtf

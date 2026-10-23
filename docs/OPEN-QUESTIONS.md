@@ -23,9 +23,11 @@ covers the fixed header **and** the slot table, so slots are authenticated by
 every chunk.
 
 ## OQ-5 iOS Credential Provider Extension memory budget vs Argon2id 256 MiB
-Status: **not yet measured.** To be measured early in Phase 2 on a real
-extension process; figure to be recorded here. If it does not fit, work stops
-and is reported; the cost is not lowered.
+Status: **deferred.** The owner removed iOS from v1 on 2026-10-23, so the
+iOS app and its Credential Provider Extension are not built and the memory
+measurement has not been made. When iOS returns, the measurement comes
+first; if 256 MiB does not fit, work stops and is reported. The cost is
+never lowered.
 
 ## OQ-6 HIBP breach check
 SHA-1 is required by the HIBP range API and is not in the security-core
@@ -128,7 +130,10 @@ each confirmation is single-use and typing aborts if that exact window
 cannot be brought back to the foreground. Windows UIPI blocks input into
 elevated windows; the user is told when this happens.
 
-## OQ-W6 Vault store overflows the stack on Windows (open, core-side)
+## OQ-W6 Vault store overflowed the stack on Windows (resolved)
+Resolved on phase2/core-vault (65b249b): the overflow was SQLCipher's
+`cipher_memory_security` recursing after VirtualLock hit the working-set
+quota. The setting is now off on all platforms; see OQ-12. Original report:
 With phase2/core-vault merged (throwaway branch phase2/windows-with-core),
 `Vault.create` crashes with a stack overflow on the windows-latest runner:
 - from .NET, inside `uniffi_strongroom_ffi_fn_constructor_vault_create`,
@@ -176,3 +181,28 @@ for every on-screen window. Exception: on the CI runner AppKit's off-screen
 menu-bar backing windows (not in `NSApp.windows`, no app content) report
 sharing state 1; the app cannot reach them. Whether a given capture API
 honours `.none` is up to macOS.
+
+## OQ-12 SQLCipher `cipher_memory_security` off on all platforms (owner-accepted)
+Decision (owner, 2026-10-23): off everywhere for v1, documented as a residual
+risk (THREAT-MODEL 4.11). With it on, SQLCipher mlocks every SQLite
+allocation; when the OS lock quota runs out (Windows working-set quota;
+small RLIMIT_MEMLOCK on Linux/Android) its own warning path allocates
+through the same allocator and recurses until the stack overflows.
+SQLCipher still wipes its key material on free; SQLite's page cache and
+other general allocations are not wiped.
+
+## OQ-13 Payload check precedence
+The Python reference found inputs where vtf-core's reported check name
+differed from SPEC-VTF 7's table order or RFC 8949. Resolution: SPEC-VTF 7
+now states the precedence explicitly (encoding faults in stream order, then
+schema checks, `payload-version` first among schema checks); vtf-core now
+reports a stray break, ai=31 on majors 0/1/6 and a two-byte simple value
+below 32 as `cbor-wellformed`; the `cbor-limit` vector was regenerated so
+it carries a single fault (a valid item with a 65537-byte title). No byte
+of the format and no positive vector changed.
+
+## OQ-14 iOS out of scope for v1
+Owner decision, 2026-10-23: iOS (app and Credential Provider Extension) is
+removed from v1. macOS is built with SwiftPM and the Command Line Tools,
+without Xcode (OQ-M2). The cross-platform round-trip covers macOS, Windows
+and Android.

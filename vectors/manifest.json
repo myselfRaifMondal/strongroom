@@ -78,7 +78,7 @@
     {"name": "cbor-missing-key", "description": "items key absent", "file": "negative/cbor-missing-key.vtf", "credential": "password", "expected_check": "cbor-missing-key"},
     {"name": "cbor-empty-optional", "description": "tombstones present but empty", "file": "negative/cbor-empty-optional.vtf", "credential": "password", "expected_check": "cbor-empty-optional"},
     {"name": "cbor-truncated", "description": "text string length runs past the end of the plaintext", "file": "negative/cbor-truncated.vtf", "credential": "password", "expected_check": "cbor-wellformed"},
-    {"name": "cbor-limit", "description": "text string of 65537 bytes", "file": "negative/cbor-limit.vtf", "credential": "password", "expected_check": "cbor-limit"},
+    {"name": "cbor-limit", "description": "otherwise valid item whose title is 65537 bytes", "file": "negative/cbor-limit.vtf", "credential": "password", "expected_check": "cbor-limit"},
     {"name": "payload-version-2", "description": "payload_version = 2", "file": "negative/payload-version-2.vtf", "credential": "password", "expected_check": "payload-version"}
   ]
 }

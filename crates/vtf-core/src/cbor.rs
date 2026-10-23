@@ -78,17 +78,24 @@ impl<'a> Decoder<'a> {
             return match ai {
                 20 => Ok(V::Bool(false)),
                 21 => Ok(V::Bool(true)),
-                31 => Err(Check::CborDeterministic), // stray "break"
-                28..=30 => Err(Check::CborWellformed),
+                // A "break" outside an indefinite item, or a reserved ai.
+                28..=31 => Err(Check::CborWellformed),
+                // RFC 8949 3.3: a two-byte simple value below 32 is malformed.
+                24 => match self.take(1)?[0] {
+                    0..=31 => Err(Check::CborWellformed),
+                    _ => Err(Check::CborType),
+                },
                 // null, undefined, other simple values, floats.
                 _ => Err(Check::CborType),
             };
         }
+        // Indefinite length is only defined for majors 2-5; for the integer
+        // and tag majors ai=31 is malformed (RFC 8949 3.2.1), as are 28-30.
+        if matches!(major, 0 | 1 | 6) && ai >= 28 {
+            return Err(Check::CborWellformed);
+        }
         if major == 6 {
             return Err(Check::CborType); // tags
-        }
-        if major == 1 && ai == 31 {
-            return Err(Check::CborWellformed);
         }
         let arg = self.argument(ai)?;
         match major {
@@ -266,6 +273,11 @@ mod tests {
         assert_eq!(err(&[0x62, 0x61]), Check::CborWellformed); // truncated text
         assert_eq!(err(&[0x62, 0xff, 0xfe]), Check::CborWellformed); // bad UTF-8
         assert_eq!(err(&[0x1c]), Check::CborWellformed); // reserved ai
+        assert_eq!(err(&[0xff]), Check::CborWellformed); // stray break
+        assert_eq!(err(&[0x1f]), Check::CborWellformed); // indefinite uint
+        assert_eq!(err(&[0xdf, 0x00]), Check::CborWellformed); // indefinite tag
+        assert_eq!(err(&[0xf8, 0x10]), Check::CborWellformed); // simple < 32 in 2 bytes
+        assert_eq!(err(&[0xf8, 0x20]), Check::CborType); // valid simple(32)
         assert_eq!(err(&[0x9a, 0xff, 0xff, 0xff, 0xff]), Check::CborWellformed);
         // huge count
     }

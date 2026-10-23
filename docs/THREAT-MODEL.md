@@ -157,12 +157,18 @@ A crafted `.vtf` or CSV file aimed at crashing or exploiting the importer.
    future upgrade to a newer Unicode version could change the NFKC form of
    code points that were unassigned before. That would only affect passwords
    containing such code points.
-9. **Argon2id memory on iOS extensions** (OQ-5): not yet measured. If the
-   Credential Provider Extension cannot afford 256 MiB, that is a functional
-   limit, not a reason to lower the cost.
-10. **Check-name precedence in the payload decoder**: `vtf-core` reports the
-    first fault it meets in document order. For some inputs that is a
-    different check name than SPEC-VTF 7's table order, or than RFC 8949's
-    well-formedness rules, would give (found by the reference
-    implementation; reported to the format owner). Every such input is
-    still rejected; only the reported name differs.
+9. **Argon2id memory on iOS extensions** (OQ-5): iOS is out of scope for
+   v1 (owner decision, 2026-10-23), so this is unmeasured and deferred. If a
+   future Credential Provider Extension cannot afford 256 MiB, that is a
+   functional limit, not a reason to lower the cost.
+10. **Check-name precedence in the payload decoder**: resolved. SPEC-VTF 7
+    now states the precedence (encoding faults in stream order, then schema),
+    vtf-core follows RFC 8949 for malformed heads, and the Python reference
+    agrees on every vector in strict mode.
+11. **SQLite memory is not wiped on free** (OQ-12). SQLCipher's
+    `cipher_memory_security` is off on every platform: with it on, SQLCipher
+    mlocks every allocation and, once the OS lock quota is exhausted,
+    recurses until the stack overflows (seen on Windows). SQLCipher still
+    wipes its own key material. Decrypted database pages in SQLite's page
+    cache may remain in freed memory of an unlocked app until reused.
+    Owner-accepted for v1.

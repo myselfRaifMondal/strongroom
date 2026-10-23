@@ -351,6 +351,15 @@ logs refer to these names. Checks 1–13 run before any key derivation.
 | 25 | `cbor-limit`         | a limit in 6.4 is exceeded |
 | 26 | `payload-version`    | payload_version is not 1 |
 
+Payload check precedence. Checks 16 and 18-21, and the string and array
+length limits of check 25, are properties of the CBOR encoding and are
+applied while decoding, in stream order: the first such fault in the byte
+stream is the one reported. Checks 22-26 are applied afterwards to the
+decoded tree, except that `payload-version` is checked immediately after
+the top-level map's keys, because a different payload version may define a
+different schema. Check 17 (`padding`) is applied to the bytes that follow
+the decoded item.
+
 An importer MUST NOT release any plaintext to the caller unless every chunk
 has authenticated and every payload check has passed. Decryption into
 memory, verification, and only then parsing, is the required order.

@@ -4,7 +4,7 @@ name: windows
 
 on:
   push:
-    branches: ["main", "phase2/windows", "phase2/windows-*"]
+    branches: ["main", "phase2/windows", "phase2/windows-*", "phase3/*"]
     paths:
       - "apps/windows/**"
       - "crates/**"
@@ -66,11 +66,9 @@ jobs:
           if-no-files-found: error
 
   rust-tests:
-    # Informational: the Rust core's own tests on Windows/MSVC, so platform
-    # problems in the core are visible here. Does not gate the app build.
-    name: Rust core tests on Windows (informational)
+    # The Rust core's own tests on Windows/MSVC (gating since Phase 3).
+    name: Rust core tests on Windows
     runs-on: windows-latest
-    continue-on-error: true
     steps:
       # Keep LF line endings: vectors/manifest.json and other fixtures are
       # compared byte-for-byte (the repo has no .gitattributes).
@@ -115,9 +113,9 @@ jobs:
     needs: [native, bindings]
     runs-on: windows-latest
     env:
-      # The core FFI bodies are stubs on main until phase2/core-vault lands.
-      # On the integration branch an Unsupported result is a failure.
-      STRONGROOM_REQUIRE_CORE: ${{ github.ref_name == 'phase2/windows-with-core' && '1' || '0' }}
+      
+      # The real core is on main: an Unsupported result is a failure.
+      STRONGROOM_REQUIRE_CORE: "1"
     steps:
       # Keep LF line endings: vectors/manifest.json and other fixtures are
       # compared byte-for-byte (the repo has no .gitattributes).
