@@ -1,0 +1,35 @@
+# Strongroom for Android
+
+Jetpack Compose app over the Rust core (`crates/strongroom-ffi`, UniFFI 0.31.0,
+Kotlin bindings generated from the frozen UDL, loaded through JNA).
+
+- **minSdk 26** (Android 8.0): Autofill framework and Keystore EC keys.
+  Hardware ECDH (`PURPOSE_AGREE_KEY`) is API 31, so biometric unlock and
+  device-bound export/import are enabled only on **API >= 31**; below that the
+  UI disables them with an explanation (OQ-1). Password unlock and
+  password-protected VTF export/import work on every supported version.
+- targetSdk/compileSdk 35, AGP 8.7.3, Kotlin 2.1.0, Gradle 8.10.2, JDK 17,
+  NDK 27.2.12479018.
+- No network permission (checked in CI). No backup (`allowBackup=false`).
+  `FLAG_SECURE` on every activity window. Clipboard copies are marked
+  sensitive and cleared after 25 s.
+
+## Build
+
+    rustup target add aarch64-linux-android x86_64-linux-android
+    cargo install cargo-ndk
+    cd apps/android
+    ./gradlew assembleDebug        # runs scripts/build-rust.sh first
+
+`STRONGROOM_ABIS` (default `arm64-v8a`) and `STRONGROOM_RUST_PROFILE`
+(`debug`/`release`) control the Rust build; `-Pstrongroom.skipRust=true` skips
+it when the `.so` and bindings already exist.
+
+## Scripts
+
+- `scripts/build-rust.sh` - cargo-ndk build + uniffi-bindgen Kotlin bindings.
+- `scripts/import-vtf.sh [--install] <file.vtf> <password> <secret-key>` -
+  imports a VTF into a throwaway vault on the connected device/emulator via
+  the `ImportVtfProbe` instrumentation test and prints `SR_IMPORT_TITLE` lines
+  (cross-platform round-trip).
+- `scripts/check-no-network.sh <apk>` - fails on any network permission.

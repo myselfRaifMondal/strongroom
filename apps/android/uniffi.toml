@@ -1,0 +1,10 @@
+# Kotlin binding config for uniffi-bindgen 0.31.0, generated from the frozen
+# UDL (crates/strongroom-ffi/src/strongroom.udl). Kept here, not in the crate,
+# because crates/ is owned by the core.
+[bindings.kotlin]
+package_name = "uniffi.strongroom"
+cdylib_name = "strongroom_ffi"
+# Android-specific code paths: android.system.SystemCleaner on API 33+,
+# JNA cleaner below.
+android = true
+android_cleaner = true

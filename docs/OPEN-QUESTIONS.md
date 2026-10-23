@@ -56,3 +56,31 @@ exported values) and against the `hpke` crate for the VTF ciphersuite.
 - `ciborium` is not used at runtime: VTF1 needs exact rejection of
   non-canonical encodings and must not leave unzeroized plaintext copies, so
   vtf-core has a small strict decoder/encoder; ciborium cross-checks it.
+
+## OQ-9 Android: per-use biometric for KeyAgreement (Phase 2, android)
+`BiometricPrompt.CryptoObject` has no `KeyAgreement` constructor (checked
+against android-35), so a Keystore ECDH key cannot be bound to a single
+biometric authentication (timeout 0). Default implemented: the P-256
+`PURPOSE_AGREE_KEY` key uses `setUserAuthenticationParameters(10,
+AUTH_BIOMETRIC_STRONG)` + `setInvalidatedByBiometricEnrollment(true)`, and the
+app shows a strong BiometricPrompt immediately before **every** use (unlock,
+device-key import). The key is therefore usable for up to 10 s after a
+biometric, by this app only. Observed on the API 34 emulator: after a new
+fingerprint is enrolled, Keystore2 reports `UserNotAuthenticated` (not
+`KeyPermanentlyInvalidated`) even right after a successful BiometricPrompt;
+the app treats that combination as "enrollment changed", deletes the key and
+the wrapped vault key, and the gate then demands the password. Revisit when `CryptoObject(long operationHandle)`
+(API 35) can be obtained for a KeyAgreement operation.
+
+## OQ-10 Android: HIBP check not implemented (TODO)
+The opt-in HIBP check (OQ-6) is out of scope for the Phase 2 Android app. The
+APK requests no network permission at all, and CI
+(`apps/android/scripts/check-no-network.sh`) fails if one appears. Adding the
+check means adding `INTERNET` behind the opt-in and doing the SHA-1 range
+query with `java.security.MessageDigest` in the platform layer.
+
+## OQ-11 Android: autofill for native apps matches by package name
+Autofill passes the page's web domain to `Vault.match_domain`; for native
+apps (no web domain) it passes the Android package name (e.g.
+`com.example.app`). Whether the core maps package names to domains (Digital
+Asset Links are not consulted, as that needs network) is open.

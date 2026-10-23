@@ -1,0 +1,12 @@
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+# Built by scripts/build-rust.sh
+app/src/main/jniLibs/
+# Never commit signing material
+*.keystore
+*.jks
