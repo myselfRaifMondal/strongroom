@@ -1,0 +1,7 @@
+// Hand-written replacement for UniFFI's strongroomFFI.modulemap: same module,
+// plus the link directive for the Rust static library (lib/libstrongroom_ffi.a).
+module strongroomFFI {
+    header "strongroomFFI.h"
+    link "strongroom_ffi"
+    export *
+}

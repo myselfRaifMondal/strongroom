@@ -1,0 +1,9 @@
+# SwiftPM build output
+.build/
+.swiftpm/
+# Produced by scripts/build-core.sh (Rust static lib + UniFFI output)
+lib/
+Sources/strongroomFFI/strongroomFFI.h
+Sources/StrongroomKit/Generated/*.swift
+# Produced by scripts/build-app.sh
+out/
