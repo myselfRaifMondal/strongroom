@@ -339,8 +339,8 @@ logs refer to these names. Checks 1–13 run before any key derivation.
 | 13 | `length`             | chunk_count is 0 or > 4096, or file length is not exactly `84 + S + 65552*C` |
 | 14 | `slot-unwrap`        | no slot can be unwrapped (reported to the UI as the generic unlock failure) |
 | 15 | `chunk-auth`         | any chunk fails AEAD verification |
-| 16 | `padding`            | non-zero padding byte, or padding >= 65536 bytes |
-| 17 | `cbor-wellformed`    | malformed CBOR, trailing data before padding, invalid UTF-8 |
+| 16 | `cbor-wellformed`    | malformed or truncated CBOR, invalid UTF-8 |
+| 17 | `padding`            | a byte after the CBOR item is non-zero, or padding >= 65536 bytes |
 | 18 | `cbor-deterministic` | non-shortest encoding, indefinite length, unsorted keys |
 | 19 | `cbor-duplicate-key` | a map contains a key twice |
 | 20 | `cbor-depth`         | nesting depth > 16 |

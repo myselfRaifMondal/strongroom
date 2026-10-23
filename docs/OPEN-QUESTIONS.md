@@ -31,3 +31,23 @@ and is reported; the cost is not lowered.
 SHA-1 is required by the HIBP range API and is not in the security-core
 crate allow-list. Default: the opt-in check is implemented in the platform
 layer with the OS SHA-1 (CryptoKit / java.security / CNG), never in the core.
+
+## OQ-7 HPKE receiver with non-exportable hardware keys (approved 2026-10-23)
+The `hpke` crate needs the recipient private key, which Secure Enclave, TPM
+and Android Keystore never release. Decision (owner-approved): the platform
+performs the single P-256 ECDH in hardware (`DeviceKeyAgreement.agree`);
+vtf-core composes RFC 9180 `ExtractAndExpand` and the base-mode key schedule
+over the `hkdf` crate. The sender side stays on the `hpke` crate. Verified
+against RFC 9180 Appendix A.3.1 (shared_secret, exporter_secret, all three
+exported values) and against the `hpke` crate for the VTF ciphersuite.
+
+## OQ-8 Dependencies added beyond the original allow-list
+- `unicode-normalization` (vtf-core): NFKC for passwords. Owner-approved.
+- `p256`, `ciborium` as **dev-dependencies only** of vtf-core: test oracles
+  (software ECDH to drive the hardware path; an independent CBOR decoder).
+  Not linked into any shipped artifact.
+- `uniffi =0.31.0` (strongroom-ffi only, not the security core): pinned to the
+  version supported by `uniffi-bindgen-cs` for the Windows C# bindings.
+- `ciborium` is not used at runtime: VTF1 needs exact rejection of
+  non-canonical encodings and must not leave unzeroized plaintext copies, so
+  vtf-core has a small strict decoder/encoder; ciborium cross-checks it.

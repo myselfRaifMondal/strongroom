@@ -14,3 +14,16 @@ lto = true
 codegen-units = 1
 debug = false
 strip = true
+
+# Argon2id at the frozen cost (256 MiB, t=3) is too slow unoptimized; keep
+# crypto crates optimized in dev/test builds so the vector suite stays fast.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+[profile.dev.package.chacha20]
+opt-level = 3
+[profile.dev.package.poly1305]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3
