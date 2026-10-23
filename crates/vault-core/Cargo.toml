@@ -4,7 +4,20 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+rust-version.workspace = true
 description = "Encrypted local vault store, items, merge, TOTP, generator, audit"
 
 [dependencies]
 vtf-core = { path = "../vtf-core" }
+# SQLCipher with vendored OpenSSL (owner-approved).
+rusqlite = { version = "0.40", default-features = false, features = ["bundled-sqlcipher-vendored-openssl", "backup"] }
+zeroize = { version = "1.8", features = ["derive"] }
+subtle = "2.6"
+sha2 = { version = "0.11", default-features = false }
+# TOTP only (owner-approved).
+hmac = "0.13"
+sha1 = { version = "0.11", default-features = false }
+
+[dev-dependencies]
+# Test oracle only: software P-256 device key.
+p256 = { version = "0.14", default-features = false, features = ["ecdh", "arithmetic"] }

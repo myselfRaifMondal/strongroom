@@ -48,6 +48,11 @@ exported values) and against the `hpke` crate for the VTF ciphersuite.
   Not linked into any shipped artifact.
 - `uniffi =0.31.0` (strongroom-ffi only, not the security core): pinned to the
   version supported by `uniffi-bindgen-cs` for the Windows C# bindings.
+- vault-core (Phase 2): `rusqlite` with `bundled-sqlcipher-vendored-openssl`
+  and `backup` (owner-approved; pulls `libsqlite3-sys`, `openssl-src` at build
+  time), `hmac` + `sha1` (TOTP only, owner-approved), `sha2`, `zeroize`,
+  `subtle`; `p256` as a dev-dependency only. strongroom-ffi adds `zeroize`
+  and a `p256` dev-dependency.
 - `ciborium` is not used at runtime: VTF1 needs exact rejection of
   non-canonical encodings and must not leave unzeroized plaintext copies, so
   vtf-core has a small strict decoder/encoder; ciborium cross-checks it.

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+rust-version.workspace = true
 description = "Stable C ABI / UniFFI boundary for the Strongroom native apps"
 
 [lib]
@@ -14,6 +15,11 @@ name = "strongroom_ffi"
 vtf-core = { path = "../vtf-core" }
 vault-core = { path = "../vault-core" }
 uniffi = "=0.31.0"
+zeroize = "1.8"
+
+[dev-dependencies]
+# Test oracle only: software P-256 device key standing in for secure hardware.
+p256 = { version = "0.14", default-features = false, features = ["ecdh", "arithmetic"] }
 
 [build-dependencies]
 uniffi = { version = "=0.31.0", features = ["build"] }
