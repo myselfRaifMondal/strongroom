@@ -62,6 +62,22 @@ jobs:
           path: apps/windows/native/${{ matrix.rid }}/strongroom_ffi.dll
           if-no-files-found: error
 
+  rust-tests:
+    # Informational: the Rust core's own tests on Windows/MSVC, so platform
+    # problems in the core are visible here. Does not gate the app build.
+    name: Rust core tests on Windows (informational)
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: tests
+      - name: cargo test --workspace --release
+        env:
+          RUST_BACKTRACE: "1"
+        run: cargo test --workspace --release
+
   bindings:
     name: C# bindings (uniffi-bindgen-cs)
     runs-on: windows-latest
