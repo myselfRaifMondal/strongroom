@@ -20,14 +20,17 @@ internal static class Program
 {
     private const int ExitOk = 0, ExitFail = 1, ExitUsage = 2, ExitUnsupported = 3;
 
-    private static int Main(string[] argv)
+    // All core calls run on a large-stack thread (see CoreThread).
+    private static int Main(string[] argv) => CoreThread.Run(() => Execute(argv));
+
+    private static int Execute(string[] argv)
     {
         Console.OutputEncoding = Encoding.UTF8;
         if (argv.Length == 0)
             return Usage();
-        var args = Args.Parse(argv.Skip(1));
         try
         {
+            var args = Args.Parse(argv.Skip(1));
             return argv[0] switch
             {
                 "create" => Create(args),

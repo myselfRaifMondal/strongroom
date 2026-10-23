@@ -78,7 +78,7 @@ public sealed partial class QuickAccessWindow : Window
     private Strongroom.Ffi.Item? Selected()
     {
         if (Items.SelectedItem is not ItemRow row || AppServices.Vault is not { } vault) return null;
-        try { return vault.GetItem(row.Id); }
+        try { return CoreThread.Run(() => vault.GetItem(row.Id)); }
         catch (Exception ex) { Message.Text = CoreErrors.Describe(ex); return null; }
     }
 
@@ -96,7 +96,7 @@ public sealed partial class QuickAccessWindow : Window
     private void OnCopyTotp(object sender, RoutedEventArgs e)
     {
         if (Items.SelectedItem is not ItemRow row || AppServices.Vault is not { } vault) return;
-        try { CopyAndClose(vault.ItemTotp(row.Id, Clock.Now()).Code, "one-time code"); }
+        try { CopyAndClose(CoreThread.Run(() => vault.ItemTotp(row.Id, Clock.Now())).Code, "one-time code"); }
         catch (Exception ex) { Message.Text = CoreErrors.Describe(ex); }
     }
 

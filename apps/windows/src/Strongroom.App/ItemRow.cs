@@ -1,3 +1,4 @@
+using Strongroom.Core.Services;
 using Strongroom.Ffi;
 
 namespace Strongroom.App;
@@ -23,5 +24,5 @@ public sealed class ItemRow
     public ItemSummary Summary { get; }
 
     public static List<ItemRow> Search(Vault vault, string query) =>
-        vault.Search(query, null, null).OrderBy(s => s.Title, StringComparer.CurrentCultureIgnoreCase).Select(s => new ItemRow(s)).ToList();
+        CoreThread.Run(() => vault.Search(query, null, null)).OrderBy(s => s.Title, StringComparer.CurrentCultureIgnoreCase).Select(s => new ItemRow(s)).ToList();
 }

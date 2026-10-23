@@ -94,3 +94,11 @@ seen the previously focused window's title and process and confirmed;
 each confirmation is single-use and typing aborts if that exact window
 cannot be brought back to the foreground. Windows UIPI blocks input into
 elevated windows; the user is told when this happens.
+
+## OQ-W6 Core stack use on Windows threads
+With phase2/core-vault merged, `Vault.create` overflowed the 1 MB default
+stack of a .NET thread-pool thread on the Windows CI runner (test host
+crashed with "Stack overflow" inside `uniffi_strongroom_ffi_fn_constructor_vault_create`).
+Default: the Windows app, CLI and tests call the core on a dedicated
+16 MB-stack thread (`CoreThread`). The core should bound its stack use so
+callers on default-size threads are safe; reported to the core owner.
