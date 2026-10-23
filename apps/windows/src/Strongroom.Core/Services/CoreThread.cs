@@ -4,10 +4,9 @@ namespace Strongroom.Core.Services;
 
 /// <summary>
 /// Runs calls into strongroom_ffi on a dedicated thread with a large stack.
-/// Windows threads default to a 1 MB stack (Linux: 8 MB); on CI the
-/// core-vault build overflowed it inside <c>Vault.create</c> on a .NET
-/// thread-pool thread. Until the core bounds its stack use, every
-/// key-derivation call (create, unlock, export, import) goes through here.
+/// Windows threads default to a 1 MB stack (Linux: 8 MB). A precaution only:
+/// the stack overflow seen with the core-vault build (OPEN-QUESTIONS OQ-W6)
+/// also happens on large stacks and must be fixed in the core.
 /// </summary>
 public static class CoreThread
 {

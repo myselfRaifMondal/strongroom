@@ -95,10 +95,16 @@ each confirmation is single-use and typing aborts if that exact window
 cannot be brought back to the foreground. Windows UIPI blocks input into
 elevated windows; the user is told when this happens.
 
-## OQ-W6 Core stack use on Windows threads
-With phase2/core-vault merged, `Vault.create` overflowed the 1 MB default
-stack of a .NET thread-pool thread on the Windows CI runner (test host
-crashed with "Stack overflow" inside `uniffi_strongroom_ffi_fn_constructor_vault_create`).
-Default: the Windows app, CLI and tests call the core on a dedicated
-16 MB-stack thread (`CoreThread`). The core should bound its stack use so
-callers on default-size threads are safe; reported to the core owner.
+## OQ-W6 Vault store overflows the stack on Windows (open, core-side)
+With phase2/core-vault merged (throwaway branch phase2/windows-with-core),
+`Vault.create` crashes with a stack overflow on the windows-latest runner:
+- from .NET, inside `uniffi_strongroom_ffi_fn_constructor_vault_create`,
+  on a 1 MB thread-pool thread, on a 16 MB thread, and (experiment) on a
+  512 MB thread, so it is not simply a large-but-bounded frame;
+- in pure Rust, `cargo test --workspace` on Windows/MSVC:
+  `vault_round_trip_through_vtf_and_device_unlock` (strongroom-ffi) and
+  `decoy_first_matching` (vault-core) "overflowed its stack", while all
+  vtf-core tests (including Argon2id at full cost) pass.
+The Windows app cannot create or unlock a vault until this is fixed in the
+core. The app, CLI and tests call the core on a 16 MB-stack thread
+(`CoreThread`) as a precaution; that alone does not fix this crash.
