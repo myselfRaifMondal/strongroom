@@ -15,3 +15,5 @@ bin/
 obj/
 .venv/
 __pycache__/
+.claude/
+**/.claude/
