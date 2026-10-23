@@ -17,7 +17,7 @@ public static class AppServices
     public static GlobalHotkey? Hotkey { get; private set; }
     public static AutoType AutoType { get; } = new();
     public static UnlockSignals Signals { get; } = new(Paths.LastPasswordBoot);
-    public static DeviceUnlock Device { get; private set; } = null!;
+    public static DeviceUnlock Device { get; } = new(Paths, new HelloPresence(() => Main?.Hwnd ?? 0));
 
     private static Vault? s_vault;
     private static QuickAccessWindow? s_overlay;
@@ -29,7 +29,6 @@ public static class AppServices
     public static void Start(MainWindow main)
     {
         Main = main;
-        Device = new DeviceUnlock(Paths, new HelloPresence(() => main.Hwnd));
         try
         {
             Messages = new MessageWindow();
@@ -78,9 +77,9 @@ public static class AppServices
     /// <summary>Why the password is required right now (NotRequired means Hello may be offered).</summary>
     public static PasswordRequiredReason PasswordRequired()
     {
-        bool hasKey = Device.IsEnrolled;
         try
         {
+            bool hasKey = Device.IsEnrolled;
             using var gate = OpenGate();
             return gate.Check(Clock.Now(), Signals.RebootedSinceLastPassword(), Signals.EnrollmentChanged(), hasKey);
         }
