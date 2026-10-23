@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="Strongroom.App.QuickAccessWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Strongroom.App"
+    Title="Strongroom quick access">
+    <Grid x:Name="Root" Padding="12" RowSpacing="8" KeyDown="OnKeyDown">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock x:Name="TargetText" Grid.Row="0" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        <TextBox x:Name="Search" Grid.Row="1" PlaceholderText="Search" TextChanged="OnSearch" />
+        <ListView x:Name="Items" Grid.Row="2" SelectionMode="Single">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="local:ItemRow">
+                    <StackPanel Padding="0,4">
+                        <TextBlock Text="{x:Bind Title}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock Text="{x:Bind Detail}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+        <StackPanel x:Name="Actions" Grid.Row="3" Orientation="Horizontal" Spacing="6">
+            <Button Content="Copy username" Click="OnCopyUsername" />
+            <Button Content="Copy password" Click="OnCopyPassword" />
+            <Button Content="Copy code" Click="OnCopyTotp" />
+            <Button x:Name="AutoTypeButton" Content="Auto-type…" Click="OnAutoType" />
+        </StackPanel>
+        <TextBlock x:Name="Message" Grid.Row="4" TextWrapping="Wrap" />
+    </Grid>
+</Window>

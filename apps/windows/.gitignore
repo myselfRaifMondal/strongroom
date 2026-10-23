@@ -1,0 +1,6 @@
+# Produced by scripts/build-native.ps1 and scripts/gen-bindings.ps1 (CI).
+/native/
+/src/Strongroom.Core/Generated/
+/out/
+*.user
+.vs/

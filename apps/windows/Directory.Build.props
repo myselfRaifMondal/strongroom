@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- Native strongroom_ffi.dll produced by scripts/build-native.ps1. -->
+    <StrongroomNativeRid Condition="'$(StrongroomNativeRid)' == '' and '$(Platform)' == 'ARM64'">win-arm64</StrongroomNativeRid>
+    <StrongroomNativeRid Condition="'$(StrongroomNativeRid)' == ''">win-x64</StrongroomNativeRid>
+    <StrongroomNativeDir>$(MSBuildThisFileDirectory)native\$(StrongroomNativeRid)\</StrongroomNativeDir>
+    <StrongroomWindowsTfm>net8.0-windows10.0.19041.0</StrongroomWindowsTfm>
+  </PropertyGroup>
+</Project>

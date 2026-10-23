@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Strongroom.App.Pages.GeneratorPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer>
+        <StackPanel MaxWidth="640" Margin="24" Spacing="12" HorizontalAlignment="Left">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Back" Click="OnBack" />
+                <TextBlock Text="Password generator" Style="{StaticResource TitleTextBlockStyle}" />
+            </StackPanel>
+            <RadioButtons x:Name="Mode" Header="Type" SelectedIndex="0" SelectionChanged="OnModeChanged">
+                <x:String>Random password</x:String>
+                <x:String>Passphrase</x:String>
+            </RadioButtons>
+
+            <StackPanel x:Name="PasswordOptions" Spacing="8">
+                <Slider x:Name="Length" Header="Length" Minimum="8" Maximum="128" Value="24" StepFrequency="1" ValueChanged="OnSlider" />
+                <CheckBox x:Name="Lower" Content="Lowercase (a-z)" IsChecked="True" Click="OnChanged" />
+                <CheckBox x:Name="Upper" Content="Uppercase (A-Z)" IsChecked="True" Click="OnChanged" />
+                <CheckBox x:Name="Digits" Content="Digits (0-9)" IsChecked="True" Click="OnChanged" />
+                <CheckBox x:Name="Symbols" Content="Symbols" IsChecked="True" Click="OnChanged" />
+                <CheckBox x:Name="AvoidAmbiguous" Content="Avoid ambiguous characters (O0Il1)" IsChecked="False" Click="OnChanged" />
+            </StackPanel>
+
+            <StackPanel x:Name="PassphraseOptions" Spacing="8" Visibility="Collapsed">
+                <Slider x:Name="Words" Header="Words" Minimum="3" Maximum="12" Value="5" StepFrequency="1" ValueChanged="OnSlider" />
+                <TextBox x:Name="Separator" Header="Separator" Text="-" MaxLength="3" Width="80" HorizontalAlignment="Left" TextChanged="OnText" />
+                <CheckBox x:Name="Capitalize" Content="Capitalize words" IsChecked="True" Click="OnChanged" />
+                <CheckBox x:Name="IncludeNumber" Content="Include a number" IsChecked="True" Click="OnChanged" />
+            </StackPanel>
+
+            <Border Padding="16" CornerRadius="6" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                <TextBlock x:Name="Result" FontFamily="Consolas" FontSize="18" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+            </Border>
+            <TextBlock x:Name="Strength" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Generate" Style="{StaticResource AccentButtonStyle}" Click="OnGenerate" />
+                <Button Content="Copy (clears in 25 s)" Click="OnCopy" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Page>
