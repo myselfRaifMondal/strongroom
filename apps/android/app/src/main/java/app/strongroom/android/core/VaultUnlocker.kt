@@ -30,9 +30,9 @@ class VaultUnlocker(context: Context, val name: String) {
         deviceKey?.exists() == true && files.wrappedKeyFile(name).isFile
 
     /** Evaluates the password-required policy. Fails safe to "password required". */
-    fun passwordRequiredReason(): PasswordRequiredReason {
+    fun passwordRequiredReason(justAuthenticated: Boolean = false): PasswordRequiredReason {
         val key = deviceKey ?: return PasswordRequiredReason.NO_BIOMETRIC_KEY
-        if (key.state() == KeyState.INVALIDATED) {
+        if (key.state(justAuthenticated) == KeyState.INVALIDATED) {
             // Enrollment changed: the hardware key is unusable forever.
             signals.markEnrollmentChanged()
             key.delete()
@@ -44,7 +44,9 @@ class VaultUnlocker(context: Context, val name: String) {
                 Clock.nowSeconds(),
                 signals.rebootedSinceLastPassword(),
                 signals.enrollmentChanged(),
-                hasDeviceKey(),
+                // A key destroyed by an enrollment change still counts, so the
+                // gate reports BiometricEnrollmentChanged, not NoBiometricKey.
+                hasDeviceKey() || signals.enrollmentChanged(),
             )
         }.getOrDefault(PasswordRequiredReason.NO_BIOMETRIC_KEY)
     }

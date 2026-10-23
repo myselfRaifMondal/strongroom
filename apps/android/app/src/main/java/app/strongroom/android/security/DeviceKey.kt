@@ -89,8 +89,11 @@ class DeviceKey(private val context: Context, val alias: String) {
      * Detects biometric enrollment changes: Keystore throws
      * KeyPermanentlyInvalidatedException for a key created with
      * setInvalidatedByBiometricEnrollment(true) once the enrolled set changes.
+     * Keystore2 checks authentication first, so without a recent biometric
+     * this returns VALID even for an invalidated key; callers re-check right
+     * after a successful BiometricPrompt.
      */
-    fun state(): KeyState {
+    fun state(justAuthenticated: Boolean = false): KeyState {
         if (!exists()) return KeyState.MISSING
         return try {
             KeyAgreement.getInstance("ECDH", ANDROID_KEYSTORE).init(privateKey())
@@ -98,7 +101,11 @@ class DeviceKey(private val context: Context, val alias: String) {
         } catch (e: KeyPermanentlyInvalidatedException) {
             KeyState.INVALIDATED
         } catch (e: UserNotAuthenticatedException) {
-            KeyState.VALID // valid key, just not authenticated right now
+            // Right after a successful strong biometric, "not authenticated"
+            // means the key no longer accepts this device's biometrics: the
+            // enrolled set changed (observed on API 34, where Keystore2 does
+            // not report KeyPermanentlyInvalidated for timeout-bound keys).
+            if (justAuthenticated) KeyState.INVALIDATED else KeyState.VALID
         } catch (e: Exception) {
             Log.w(TAG, "device key probe failed: ${e::class.java.simpleName}")
             KeyState.VALID

@@ -1,6 +1,7 @@
 package app.strongroom.android.ui
 
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -146,7 +147,10 @@ fun ImportScreen(nav: Nav) {
                 info = null
                 val bytes = core { context.contentResolver.openInputStream(uri)!!.use { it.readBytes() } }
                 fileBytes = bytes
-                fileName = uri.lastPathSegment
+                fileName = core {
+                    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                        ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+                } ?: uri.lastPathSegment
                 info = core { vtfInspect(bytes) }
             }
         }

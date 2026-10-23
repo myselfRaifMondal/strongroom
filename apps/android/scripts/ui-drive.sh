@@ -13,8 +13,8 @@ SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
 ADB="${ADB:-$(command -v adb || echo "$SDK/platform-tools/adb")}"
 
 dump() {
-  "$ADB" shell uiautomator dump /sdcard/sr-ui.xml >/dev/null 2>&1
-  "$ADB" shell cat /sdcard/sr-ui.xml
+  "$ADB" shell uiautomator dump /data/local/tmp/sr-ui.xml >/dev/null 2>&1
+  "$ADB" shell cat /data/local/tmp/sr-ui.xml
 }
 
 center() {

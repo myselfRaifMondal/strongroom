@@ -60,7 +60,11 @@ biometric authentication (timeout 0). Default implemented: the P-256
 AUTH_BIOMETRIC_STRONG)` + `setInvalidatedByBiometricEnrollment(true)`, and the
 app shows a strong BiometricPrompt immediately before **every** use (unlock,
 device-key import). The key is therefore usable for up to 10 s after a
-biometric, by this app only. Revisit when `CryptoObject(long operationHandle)`
+biometric, by this app only. Observed on the API 34 emulator: after a new
+fingerprint is enrolled, Keystore2 reports `UserNotAuthenticated` (not
+`KeyPermanentlyInvalidated`) even right after a successful BiometricPrompt;
+the app treats that combination as "enrollment changed", deletes the key and
+the wrapped vault key, and the gate then demands the password. Revisit when `CryptoObject(long operationHandle)`
 (API 35) can be obtained for a KeyAgreement operation.
 
 ## OQ-10 Android: HIBP check not implemented (TODO)

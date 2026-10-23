@@ -209,6 +209,13 @@ fun UnlockContent(vaultName: String, onBack: (() -> Unit)?, onUnlocked: () -> Un
                                 reason = core { unlocker.passwordRequiredReason() }
                                 throw IllegalStateException(result.message)
                             }
+                            // Keystore reports an enrollment change only once the
+                            // user is authenticated, so re-check the policy now.
+                            val after = core { unlocker.passwordRequiredReason(justAuthenticated = true) }
+                            if (after != PasswordRequiredReason.NOT_REQUIRED) {
+                                reason = after
+                                throw IllegalStateException(after.explanation())
+                            }
                             val vault = core { unlocker.unlockWithDevice() }
                             finish(vault)
                         }

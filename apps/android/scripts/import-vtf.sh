@@ -38,7 +38,7 @@ if [ "$INSTALL" = 1 ]; then
 fi
 
 REMOTE=/data/local/tmp/strongroom-import.vtf
-"$ADB" push "$VTF" "$REMOTE" >/dev/null
+"$ADB" push "$VTF" "$REMOTE" >/dev/null 2>&1
 "$ADB" shell chmod 644 "$REMOTE"
 
 b64() { printf '%s' "$1" | base64 | tr -d '\n'; }
@@ -52,8 +52,9 @@ OUT="$("$ADB" shell am instrument -w \
 
 "$ADB" shell rm -f "$REMOTE" >/dev/null 2>&1 || true
 
-printf '%s\n' "$OUT" | grep -E '^SR_IMPORT_' || true
-if printf '%s\n' "$OUT" | grep -q '^SR_IMPORT_SUMMARY' && printf '%s\n' "$OUT" | grep -qE '^OK \('; then
+# The runner may prefix the first stream line with the class name.
+printf '%s\n' "$OUT" | grep -oE 'SR_IMPORT_[A-Z]+ ?.*' || true
+if printf '%s\n' "$OUT" | grep -q 'SR_IMPORT_SUMMARY' && printf '%s\n' "$OUT" | grep -qE '^OK \('; then
   exit 0
 fi
 echo "--- import failed; raw instrumentation output:" >&2
