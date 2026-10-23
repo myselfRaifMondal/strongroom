@@ -1010,9 +1010,11 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "strongroom-ffi"
 version = "0.1.0"
 dependencies = [
+ "p256",
  "uniffi",
  "vault-core",
  "vtf-core",
+ "zeroize",
 ]
 
 [[package]]

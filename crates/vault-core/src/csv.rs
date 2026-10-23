@@ -109,7 +109,7 @@ impl Columns {
     }
 }
 
-fn get<'a>(row: &'a [String], i: Option<usize>) -> Option<&'a str> {
+fn get(row: &[String], i: Option<usize>) -> Option<&str> {
     let v = row.get(i?)?.trim();
     (!v.is_empty()).then_some(v)
 }

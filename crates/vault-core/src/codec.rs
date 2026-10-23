@@ -126,7 +126,7 @@ impl R<'_> {
         self.0 = rest;
         // Validate first so a failed conversion never leaves a copy behind.
         core::str::from_utf8(h).ok()?;
-        Some(String::from_utf8(h.to_vec()).ok()?)
+        String::from_utf8(h.to_vec()).ok()
     }
     fn opt(&mut self) -> Option<Option<String>> {
         match self.u8()? {
