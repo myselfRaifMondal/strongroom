@@ -14,6 +14,9 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 JOBS="${CARGO_JOBS:-2}"
 TARGET_DIR="${CARGO_TARGET_DIR:-$REPO/target}"
+# Match Package.swift's platform so C code in the core (SQLCipher, vendored
+# OpenSSL) is not built for the SDK's newer macOS version.
+export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-14.0}"
 GEN="$(mktemp -d)"
 trap 'rm -rf "$GEN"' EXIT
 

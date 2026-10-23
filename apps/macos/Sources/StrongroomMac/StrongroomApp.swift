@@ -74,6 +74,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         })
 
         NSApp.activate(ignoringOtherApps: true)
+
+        // CI / verification: also open the quick-access overlay so its window
+        // can be checked for capture exclusion.
+        if ProcessInfo.processInfo.environment["STRONGROOM_SMOKE_OVERLAY"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                self?.quickAccess.show()
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

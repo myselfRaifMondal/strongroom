@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 @testable import StrongroomKit
 import Testing
@@ -61,5 +62,83 @@ import Testing
             return try b.search(query: "", folder: nil, tag: nil).map(\.title).sorted()
         }
         #expect(titles == ["Card", "Login"])
+    }
+
+    /// The gate inputs the app feeds (reboot, enrollment change, device key)
+    /// produce the documented reasons.
+    @Test func unlockGatePolicy() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("strongroom-gate-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let gate = try UnlockGate(statePath: base.appendingPathComponent("gate.state").path)
+        let now: Int64 = 1_800_000_000
+        do {
+            try gate.recordPasswordUnlock(now: now)
+        } catch let e where CoreErrors.isUnsupported(e) {
+            return // stub core
+        }
+        #expect(gate.check(now: now + 60, rebootedSinceLastPassword: false, enrollmentChanged: false, hasDeviceKey: true) == .notRequired)
+        #expect(gate.check(now: now + 60, rebootedSinceLastPassword: false, enrollmentChanged: false, hasDeviceKey: false) == .noBiometricKey)
+        #expect(gate.check(now: now + 60, rebootedSinceLastPassword: true, enrollmentChanged: false, hasDeviceKey: true) == .firstLaunchAfterReboot)
+        #expect(gate.check(now: now + 60, rebootedSinceLastPassword: false, enrollmentChanged: true, hasDeviceKey: true) == .biometricEnrollmentChanged)
+        #expect(gate.check(now: now + 8 * 86_400, rebootedSinceLastPassword: false, enrollmentChanged: false, hasDeviceKey: true) == .periodicCheck)
+        for _ in 0 ..< 5 { try gate.recordBiometricFailure() }
+        #expect(gate.check(now: now + 60, rebootedSinceLastPassword: false, enrollmentChanged: false, hasDeviceKey: true) == .tooManyBiometricFailures)
+        try gate.recordPasswordUnlock(now: now + 120)
+        #expect(gate.check(now: now + 180, rebootedSinceLastPassword: false, enrollmentChanged: false, hasDeviceKey: true) == .notRequired)
+    }
+
+    /// End to end over the real Secure Enclave without a Touch ID prompt: the
+    /// vault key is wrapped to an SE key (no biometry flag, test only) and the
+    /// vault is reopened through `unlock_with_device_key`, i.e. one SE ECDH
+    /// driven by the core's HPKE receiver. Skipped without an SE or on stubs.
+    @Test func deviceKeyUnlockThroughSecureEnclave() async throws {
+        let sk = generateSecretKey()
+        guard !sk.isEmpty, SecureEnclave.isAvailable else { return }
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("strongroom-se-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let path = base.appendingPathComponent("v.srdb").path
+
+        let titles = try await CoreThread.run { () throws -> [String] in
+            let device = try NoPromptSecureEnclaveKey()
+            let v = try Vault.create(path: path, password: "test-password-1", secretKey: sk, now: Clock.now())
+            var d = ItemDraft(kind: .login)
+            d.title = "Sealed to the Secure Enclave"
+            _ = try v.addItem(input: d.toInput(), now: Clock.now())
+            let wrapped = try v.wrapVaultKeyForDevice(devicePublicKey: device.publicKey())
+            v.lock()
+
+            let reopened = try Vault.unlockWithDeviceKey(path: path, deviceWrappedKey: wrapped, device: device)
+            defer { reopened.lock() }
+            #expect(device.agreeCount == 1)
+
+            // A different SE key must not open it.
+            let other = try NoPromptSecureEnclaveKey()
+            #expect(throws: StrongroomError.UnlockFailed) {
+                _ = try Vault.unlockWithDeviceKey(path: path, deviceWrappedKey: wrapped, device: other)
+            }
+            return try reopened.search(query: "", folder: nil, tag: nil).map(\.title)
+        }
+        #expect(titles == ["Sealed to the Secure Enclave"])
+    }
+}
+
+/// Test-only SE key without `.biometryCurrentSet`, so it runs unattended.
+final class NoPromptSecureEnclaveKey: DeviceKeyAgreement, @unchecked Sendable {
+    private let key: SecureEnclave.P256.KeyAgreement.PrivateKey
+    private(set) var agreeCount = 0
+
+    init() throws {
+        key = try SecureEnclave.P256.KeyAgreement.PrivateKey(
+            compactRepresentable: false, accessControl: try SecureEnclaveDeviceKey.accessControl(biometry: false))
+    }
+
+    func publicKey() -> Data { key.publicKey.x963Representation }
+
+    func agree(peerPublicKey: Data) throws -> Data {
+        agreeCount += 1
+        let peer = try P256.KeyAgreement.PublicKey(x963Representation: peerPublicKey)
+        return try key.sharedSecretFromKeyAgreement(with: peer).withUnsafeBytes { Data($0) }
     }
 }

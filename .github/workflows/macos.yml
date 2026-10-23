@@ -88,7 +88,8 @@ jobs:
         run: |
           data="$RUNNER_TEMP/app-data"
           mkdir -p "$data"
-          STRONGROOM_DATA_DIR="$data" apps/macos/out/Strongroom.app/Contents/MacOS/Strongroom > "$RUNNER_TEMP/app.log" 2>&1 &
+          STRONGROOM_DATA_DIR="$data" STRONGROOM_SMOKE_OVERLAY=1 \
+            apps/macos/out/Strongroom.app/Contents/MacOS/Strongroom > "$RUNNER_TEMP/app.log" 2>&1 &
           pid=$!
           sleep 10
           if ! kill -0 "$pid" 2>/dev/null; then
@@ -100,6 +101,11 @@ jobs:
           echo "APP ALIVE after 10 s: pid=$pid"
           ps -o pid,rss,etime,command -p "$pid"
           ls -la "$data"
+          echo "--- capture exclusion (main window + quick-access overlay) ---"
+          swift apps/macos/scripts/window-sharing.swift "$pid" || { kill "$pid"; exit 1; }
+          screencapture -x apps/macos/out/screen-with-app.png \
+            && echo "screenshot saved (artifact): the Strongroom windows should be absent from it" \
+            || echo "screencapture not permitted on this runner"
           kill "$pid"
           wait "$pid" 2>/dev/null || true
           echo "--- app log ---"
@@ -119,4 +125,5 @@ jobs:
             apps/macos/out/Strongroom-macos-adhoc.zip
             apps/macos/out/strongroom-mac-cli
             apps/macos/out/*.vtf
+            apps/macos/out/*.png
           if-no-files-found: warn
