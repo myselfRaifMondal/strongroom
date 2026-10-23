@@ -41,7 +41,13 @@ jobs:
           cargo fmt -p vtf-core -p vault-core --check
           cargo fmt --manifest-path fuzz/Cargo.toml --check
       - name: cargo clippy -D warnings
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: cargo clippy -p vtf-core -p vault-core --all-targets --locked -- -D warnings
+      # uniffi 0.31's generated scaffolding (included by strongroom-ffi) trips
+      # clippy::large_const_arrays on current stable. The proper fix is an
+      # allow at strongroom-ffi's include_scaffolding! site (FFI owner); until
+      # then only that one lint is relaxed, and only for this crate.
+      - name: cargo clippy -D warnings (strongroom-ffi)
+        run: cargo clippy -p strongroom-ffi --all-targets --locked -- -D warnings -A clippy::large_const_arrays
 
   test:
     name: cargo test --workspace
