@@ -82,5 +82,8 @@ be a deliberate product decision.
 ## OQ-M5 macOS: screen-capture exclusion
 Default: every window (main, sheets, alerts, panels, quick-access overlay) gets
 `NSWindow.sharingType = .none`. Verified as window-server sharing state 0 via
-`CGWindowListCopyWindowInfo` (`scripts/window-sharing.swift`, also run in CI).
-Whether a given capture API honours it is up to macOS.
+`CGWindowListCopyWindowInfo` (`scripts/window-sharing.swift`, also run in CI)
+for every on-screen window. Exception: on the CI runner AppKit's off-screen
+menu-bar backing windows (not in `NSApp.windows`, no app content) report
+sharing state 1; the app cannot reach them. Whether a given capture API
+honours `.none` is up to macOS.
