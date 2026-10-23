@@ -1,0 +1,129 @@
+# macOS app CI: Rust core -> Swift bindings -> SwiftPM build + tests -> .app
+# bundle (ad-hoc signed) -> launch check -> CLI VTF round-trip.
+name: macos
+
+on:
+  push:
+    branches: ["main", "phase2/macos", "phase2/macos-*"]
+    paths:
+      - "apps/macos/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/macos.yml"
+  pull_request:
+    paths:
+      - "apps/macos/**"
+      - "crates/**"
+      - ".github/workflows/macos.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_JOBS: "3"
+
+jobs:
+  macos:
+    name: build, test, app bundle + launch, CLI round-trip
+    runs-on: macos-latest
+    env:
+      # The core FFI bodies are stubs on main until phase2/core-vault lands.
+      # On an integration branch an Unsupported result is a failure.
+      STRONGROOM_REQUIRE_CORE: ${{ github.ref_name == 'phase2/macos-with-core' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Runner facts
+        run: |
+          sw_vers
+          uname -m
+          xcode-select -p
+          swift --version
+          rustup show active-toolchain || true
+          cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: macos
+
+      - name: Build Rust core + generate Swift bindings
+        run: apps/macos/scripts/build-core.sh
+
+      - name: swift build
+        working-directory: apps/macos
+        run: swift build
+
+      - name: swift test
+        run: apps/macos/scripts/test.sh
+
+      - name: Assemble + ad-hoc sign Strongroom.app
+        run: apps/macos/scripts/build-app.sh
+
+      - name: CLI probe (FFI link, Secure Enclave / Touch ID availability)
+        run: apps/macos/out/strongroom-mac-cli probe
+
+      - name: CLI round-trip (create, add, export VTF, import, print titles)
+        env:
+          STRONGROOM_PASSWORD: "ci-throwaway-master-password"
+        run: |
+          dir="$RUNNER_TEMP/roundtrip"
+          set +e
+          apps/macos/out/strongroom-mac-cli roundtrip --dir "$dir"
+          code=$?
+          set -e
+          if [ "$code" -eq 3 ] && [ "$STRONGROOM_REQUIRE_CORE" != "1" ]; then
+            echo "::warning title=Core not implemented::strongroom_ffi returned Unsupported; the round-trip could not run against the stub core."
+            exit 0
+          fi
+          [ "$code" -eq 0 ] || exit "$code"
+          echo "--- import of the exported file via 'import --in' (Phase 3 entry point) ---"
+          STRONGROOM_SECRET_KEY="$(cat "$dir/source.secret-key.txt")" \
+            apps/macos/out/strongroom-mac-cli import --in "$dir/macos-roundtrip.vtf"
+          cp "$dir/macos-roundtrip.vtf" apps/macos/out/
+
+      - name: Launch Strongroom.app (alive check)
+        run: |
+          data="$RUNNER_TEMP/app-data"
+          mkdir -p "$data"
+          STRONGROOM_DATA_DIR="$data" STRONGROOM_SMOKE_OVERLAY=1 \
+            apps/macos/out/Strongroom.app/Contents/MacOS/Strongroom > "$RUNNER_TEMP/app.log" 2>&1 &
+          pid=$!
+          sleep 10
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid"; code=$?
+            echo "APP EXITED EARLY with code $code"
+            cat "$RUNNER_TEMP/app.log"
+            exit 1
+          fi
+          echo "APP ALIVE after 10 s: pid=$pid"
+          ps -o pid,rss,etime,command -p "$pid"
+          ls -la "$data"
+          echo "--- capture exclusion (main window + quick-access overlay) ---"
+          swift apps/macos/scripts/window-sharing.swift "$pid" || { kill "$pid"; exit 1; }
+          screencapture -x apps/macos/out/screen-with-app.png \
+            && echo "screenshot saved (artifact): the Strongroom windows should be absent from it" \
+            || echo "screencapture not permitted on this runner"
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+          echo "--- app log ---"
+          cat "$RUNNER_TEMP/app.log"
+
+      - name: Package artifact
+        if: always()
+        run: |
+          cd apps/macos/out
+          [ -d Strongroom.app ] && ditto -c -k --keepParent Strongroom.app Strongroom-macos-adhoc.zip || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: strongroom-macos
+          path: |
+            apps/macos/out/Strongroom-macos-adhoc.zip
+            apps/macos/out/strongroom-mac-cli
+            apps/macos/out/*.vtf
+            apps/macos/out/*.png
+          if-no-files-found: warn

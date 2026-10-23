@@ -141,3 +141,38 @@ With phase2/core-vault merged (throwaway branch phase2/windows-with-core),
 The Windows app cannot create or unlock a vault until this is fixed in the
 core. The app, CLI and tests call the core on a 16 MB-stack thread
 (`CoreThread`) as a precaution; that alone does not fix this crash.
+## OQ-M1 macOS: HIBP breach check not implemented
+Default: out of scope for the macOS app in Phase 2. The app makes no network
+calls at all. When it is added it follows OQ-6: opt-in, off by default, SHA-1
+from CryptoKit (`Insecure.SHA1`) in the platform layer, k-anonymity range API.
+
+## OQ-M2 macOS: built without Xcode, ad-hoc signed
+Default: `apps/macos` is a SwiftPM package built with the Command Line Tools;
+`scripts/build-app.sh` assembles `Strongroom.app` and signs it ad hoc
+(hardened runtime, no entitlements). No certificate, no notarization, so on
+another Mac Gatekeeper blocks it until the user allows it. The Secure Enclave
+key needs no keychain entitlement: it is stored as its SE-encrypted
+`dataRepresentation` in a 0600 file under ~/Library/Application Support/Strongroom.
+With only the CLT, `swift test` needs extra flags (`scripts/test.sh`).
+
+## OQ-M3 macOS: Touch ID enrollment change detection
+Default: two signals feed `UnlockGate`'s `enrollment_changed`: the LocalAuthentication
+domain-state hash stored at enrollment, and the Secure Enclave refusing the
+`.biometryCurrentSet` key after a successful Touch ID check. After the next
+password unlock the device key is recreated automatically. Not verified with a
+real fingerprint change (manual test pending).
+
+## OQ-M4 macOS: Secret Key not stored on the Mac
+Default: password unlock asks for the master password and the Secret Key every
+time; the Secret Key is never written to disk by the app. Touch ID unlock
+avoids typing both. Storing the Secret Key locally (as 1Password does) would
+be a deliberate product decision.
+
+## OQ-M5 macOS: screen-capture exclusion
+Default: every window (main, sheets, alerts, panels, quick-access overlay) gets
+`NSWindow.sharingType = .none`. Verified as window-server sharing state 0 via
+`CGWindowListCopyWindowInfo` (`scripts/window-sharing.swift`, also run in CI)
+for every on-screen window. Exception: on the CI runner AppKit's off-screen
+menu-bar backing windows (not in `NSApp.windows`, no app content) report
+sharing state 1; the app cannot reach them. Whether a given capture API
+honours `.none` is up to macOS.
