@@ -60,9 +60,9 @@ jobs:
           "$cli" inspect --in "$out/macos.vtf"
           echo "--- exported titles"; cat "$out/macos.titles.txt"
           shasum -a 256 "$out/macos.vtf"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: vtf-macos, path: "${{ runner.temp }}/vtf/", retention-days: 1, if-no-files-found: error }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: cli-macos, path: apps/macos/out/strongroom-mac-cli, retention-days: 1, if-no-files-found: error }
 
   # ---------------------------------------------------------------- Windows
@@ -92,7 +92,7 @@ jobs:
         run: |
           apps/windows/scripts/gen-bindings.ps1
           dotnet publish apps/windows/src/Strongroom.Cli/Strongroom.Cli.csproj -c Release -r win-x64 --self-contained false -o apps/windows/out/cli
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: cli-windows, path: apps/windows/out/cli/, retention-days: 1, if-no-files-found: error }
 
   windows-export:
@@ -121,7 +121,7 @@ jobs:
           "$cli" inspect --in "$out/windows.vtf"
           echo "--- exported titles"; cat "$out/windows.titles.txt"
           sha256sum "$out/windows.vtf"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: vtf-windows, path: "${{ runner.temp }}/vtf/", retention-days: 1, if-no-files-found: error }
 
   # ---------------------------------------------------------------- Android
@@ -152,7 +152,7 @@ jobs:
       - name: Build APKs
         working-directory: apps/android
         run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest -Pstrongroom.skipRust=true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: apks-android
           retention-days: 1
@@ -183,7 +183,7 @@ jobs:
           disable-animations: true
           script: |
             adb install -r -t $(find apks -name app-debug.apk) && adb install -r -t $(find apks -name app-debug-androidTest.apk) && pw="$(openssl rand -hex 24)" && mkdir -p "$RUNNER_TEMP/vtf" && printf '%s' "$pw" > "$RUNNER_TEMP/vtf/android.password.txt" && apps/android/scripts/export-vtf.sh "$RUNNER_TEMP/vtf" "$pw" && sha256sum "$RUNNER_TEMP/vtf/android.vtf"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: vtf-android, path: "${{ runner.temp }}/vtf/", retention-days: 1, if-no-files-found: error }
 
   # ---------------------------------------------------------------- imports

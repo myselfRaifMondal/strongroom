@@ -59,7 +59,7 @@ jobs:
         run: |
           $dumpbin = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe -ErrorAction SilentlyContinue | Where-Object FullName -match 'Hostx64\\x64' | Select-Object -First 1
           if ($dumpbin) { & $dumpbin.FullName /exports apps/windows/native/${{ matrix.rid }}/strongroom_ffi.dll | Select-String 'uniffi_strongroom_ffi_fn_' | Measure-Object | ForEach-Object { "exported uniffi fn symbols: $($_.Count)" } }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.rid }}
           path: apps/windows/native/${{ matrix.rid }}/strongroom_ffi.dll
@@ -102,7 +102,7 @@ jobs:
       - name: Generate
         shell: pwsh
         run: apps/windows/scripts/gen-bindings.ps1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bindings-cs
           path: apps/windows/src/Strongroom.Core/Generated/strongroom.cs
@@ -208,7 +208,7 @@ jobs:
           Stop-Process -Id $p.Id -Force
           "app process killed"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: strongroom-windows
