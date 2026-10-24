@@ -14,7 +14,7 @@ name = "strongroom_ffi"
 [dependencies]
 vtf-core = { path = "../vtf-core" }
 vault-core = { path = "../vault-core" }
-uniffi = "=0.31.0"
+uniffi = "=0.32.2"
 zeroize = "1.8"
 
 [dev-dependencies]
@@ -22,7 +22,7 @@ zeroize = "1.8"
 p256 = { version = "0.14", default-features = false, features = ["ecdh", "arithmetic"] }
 
 [build-dependencies]
-uniffi = { version = "=0.31.0", features = ["build"] }
+uniffi = { version = "=0.32.2", features = ["build"] }
 
 [[bin]]
 name = "uniffi-bindgen"
