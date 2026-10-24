@@ -38,6 +38,19 @@ public struct DataDirectory: Sendable {
     public var biometryStatePath: URL { url.appendingPathComponent("biometry-state.bin") }
     /// kern.boottime recorded at the last password unlock.
     public var bootTimePath: URL { url.appendingPathComponent("last-password-boot.txt") }
+    /// Optional second vault (decoy). The unlock screen always passes both
+    /// paths to `unlock_first_matching`, whether or not this file exists, so
+    /// timing and errors do not depend on it.
+    public var secondVaultPath: URL { url.appendingPathComponent("vault-2.srdb") }
+    /// Every vault path the unlock screen tries, in order.
+    public var unlockCandidatePaths: [URL] { [vaultPath, secondVaultPath] }
+    /// Which vault the Touch ID wrapped key belongs to ("1" or "2"). Not secret.
+    public var deviceUnlockTargetPath: URL { url.appendingPathComponent("device-unlock-target.txt") }
+    /// Secure Enclave key (user presence) used for device-to-device transfer:
+    /// its public key is this Mac's pairing payload.
+    public var transferKeyBlobPath: URL { url.appendingPathComponent("transfer-key.se") }
+    /// Public keys of paired devices (JSON, not secret, 0600).
+    public var pairedDevicesPath: URL { url.appendingPathComponent("paired-devices.json") }
 }
 
 /// Files written with 0600 permissions, atomically (temp file + rename).

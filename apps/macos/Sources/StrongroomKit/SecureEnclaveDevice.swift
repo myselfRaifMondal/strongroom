@@ -54,6 +54,7 @@ public final class SecureEnclaveDeviceKey: DeviceKeyAgreement, @unchecked Sendab
     private let blob: Data
     private let publicKeyX963: Data
     private let reason: String
+    private let policy: LAPolicy
     private let lock = NSLock()
     private var _lastFailure: DeviceKeyFailure?
 
@@ -71,9 +72,19 @@ public final class SecureEnclaveDeviceKey: DeviceKeyAgreement, @unchecked Sendab
         return (key.dataRepresentation, key.publicKey.x963Representation)
     }
 
-    static func accessControl(biometry: Bool) throws -> SecAccessControl {
+    /// Transfer key: requires user presence (Touch ID or the login password)
+    /// for every use, and survives fingerprint changes, so files sealed to
+    /// this Mac stay importable.
+    public static func createTransferKey() throws -> (blob: Data, publicKey: Data) {
+        let key = try SecureEnclave.P256.KeyAgreement.PrivateKey(
+            compactRepresentable: false, accessControl: try accessControl(biometry: false, userPresence: true))
+        return (key.dataRepresentation, key.publicKey.x963Representation)
+    }
+
+    static func accessControl(biometry: Bool, userPresence: Bool = false) throws -> SecAccessControl {
         var flags: SecAccessControlCreateFlags = [.privateKeyUsage]
         if biometry { flags.insert(.biometryCurrentSet) }
+        if userPresence { flags.insert(.userPresence) }
         var error: Unmanaged<CFError>?
         guard let ac = SecAccessControlCreateWithFlags(
             nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, flags, &error)
@@ -83,12 +94,15 @@ public final class SecureEnclaveDeviceKey: DeviceKeyAgreement, @unchecked Sendab
         return ac
     }
 
-    public init(blob: Data, reason: String) throws {
+    /// `policy`: biometrics only for the Touch ID unlock key;
+    /// `.deviceOwnerAuthentication` (Touch ID or password) for the transfer key.
+    public init(blob: Data, reason: String, policy: LAPolicy = .deviceOwnerAuthenticationWithBiometrics) throws {
         // Loading the blob and reading the public key does not prompt.
         let key = try SecureEnclave.P256.KeyAgreement.PrivateKey(dataRepresentation: blob)
         self.blob = blob
         self.publicKeyX963 = key.publicKey.x963Representation
         self.reason = reason
+        self.policy = policy
     }
 
     public func publicKey() -> Data { publicKeyX963 }
@@ -108,7 +122,7 @@ public final class SecureEnclaveDeviceKey: DeviceKeyAgreement, @unchecked Sendab
         let ctx = LAContext()
         ctx.localizedReason = reason
         ctx.touchIDAuthenticationAllowableReuseDuration = 0
-        if let failure = Self.evaluate(ctx, reason: reason) {
+        if let failure = Self.evaluate(ctx, policy: policy, reason: reason) {
             setFailure(failure)
             throw StrongroomError.UnlockFailed
         }
@@ -130,10 +144,10 @@ public final class SecureEnclaveDeviceKey: DeviceKeyAgreement, @unchecked Sendab
     }
 
     /// Blocking Touch ID evaluation. Never call on the main thread.
-    private static func evaluate(_ ctx: LAContext, reason: String) -> DeviceKeyFailure? {
+    private static func evaluate(_ ctx: LAContext, policy: LAPolicy, reason: String) -> DeviceKeyFailure? {
         let done = DispatchSemaphore(value: 0)
         var outcome: DeviceKeyFailure?
-        ctx.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { ok, error in
+        ctx.evaluatePolicy(policy, localizedReason: reason) { ok, error in
             if !ok {
                 switch (error as? LAError)?.code {
                 case .userCancel?, .appCancel?, .systemCancel?, .userFallback?: outcome = .cancelled

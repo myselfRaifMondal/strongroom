@@ -55,8 +55,13 @@ public final class DeviceUnlock: @unchecked Sendable {
         }
         let (blob, publicKey) = try SecureEnclaveDeviceKey.create()
         let wrapped = try vault.wrapVaultKeyForDevice(devicePublicKey: publicKey)
+        // Which of the vault files this is (decoy support). Checked with an
+        // in-memory software key: no Argon2id, no prompt.
+        let target = SecureFile.exists(dir.secondVaultPath)
+            && VaultIdentity.isVault(vault, storedAt: dir.secondVaultPath) ? "2" : "1"
         try SecureFile.write(blob, to: dir.deviceKeyBlobPath)
         try SecureFile.write(wrapped, to: dir.deviceWrappedKeyPath)
+        try SecureFile.write(Data(target.utf8), to: dir.deviceUnlockTargetPath)
         if let state = DeviceCapabilities.biometryStateHash() {
             try SecureFile.write(state, to: dir.biometryStatePath)
         }
@@ -66,6 +71,14 @@ public final class DeviceUnlock: @unchecked Sendable {
         SecureFile.remove(dir.deviceKeyBlobPath)
         SecureFile.remove(dir.deviceWrappedKeyPath)
         SecureFile.remove(dir.biometryStatePath)
+        SecureFile.remove(dir.deviceUnlockTargetPath)
+    }
+
+    /// The vault file the Touch ID key opens (the main vault unless it was
+    /// enrolled while the second vault was open).
+    public var enrolledVaultPath: URL {
+        let t = SecureFile.read(dir.deviceUnlockTargetPath).flatMap { String(data: $0, encoding: .utf8) }
+        return t?.trimmingCharacters(in: .whitespacesAndNewlines) == "2" ? dir.secondVaultPath : dir.vaultPath
     }
 
     public enum Outcome {
