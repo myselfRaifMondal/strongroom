@@ -1,0 +1,28 @@
+# Weekly dependency update PRs. Security-core crates still need a human
+# review against CONTRIBUTING.md before merging.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+  - package-ecosystem: cargo
+    directory: /fuzz
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 2
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+  - package-ecosystem: gradle
+    directory: /apps/android
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 3
+  - package-ecosystem: nuget
+    directory: /apps/windows
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 3
+  - package-ecosystem: uv
+    directory: /reference
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 2

@@ -2,6 +2,13 @@
 
 # Strongroom
 
+[![rust](https://github.com/myselfRaifMondal/strongroom/actions/workflows/rust.yml/badge.svg)](https://github.com/myselfRaifMondal/strongroom/actions/workflows/rust.yml)
+[![macos](https://github.com/myselfRaifMondal/strongroom/actions/workflows/macos.yml/badge.svg)](https://github.com/myselfRaifMondal/strongroom/actions/workflows/macos.yml)
+[![windows](https://github.com/myselfRaifMondal/strongroom/actions/workflows/windows.yml/badge.svg)](https://github.com/myselfRaifMondal/strongroom/actions/workflows/windows.yml)
+[![android](https://github.com/myselfRaifMondal/strongroom/actions/workflows/android.yml/badge.svg)](https://github.com/myselfRaifMondal/strongroom/actions/workflows/android.yml)
+[![crossplatform](https://github.com/myselfRaifMondal/strongroom/actions/workflows/crossplatform.yml/badge.svg)](https://github.com/myselfRaifMondal/strongroom/actions/workflows/crossplatform.yml)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
+
 A device-first, local-only password manager. Your vault lives encrypted on
 your own devices. There is **no server, no account and no cloud sync**:
 vaults move between devices only as encrypted files you transfer yourself.
@@ -117,8 +124,24 @@ workflows in `.github/workflows/`.
 
 ## Contributing
 
-Contributions are welcome, especially security review. Read
-[CONTRIBUTING.md](CONTRIBUTING.md) first. Report vulnerabilities privately,
+Contributions are welcome. The most valuable help right now:
+
+- **Security review** of the format spec, the Rust core and the FFI
+  boundary. Report findings privately (see below).
+- **Testing on real hardware**: Windows Hello / TPM, Android devices and
+  autofill, older macOS versions.
+- **Independent implementations** of [SPEC-VTF](docs/SPEC-VTF.md) checked
+  against [vectors/](vectors/). Disagreements with the spec are bugs worth
+  reporting.
+- **Fuzzing** for longer than the 60-second CI smoke runs.
+- Issues labelled
+  [good first issue](https://github.com/myselfRaifMondal/strongroom/labels/good%20first%20issue).
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md): setup for each platform, the
+project rules and the pull request checklist.
+
+**Report vulnerabilities privately** with
+[Report a vulnerability](https://github.com/myselfRaifMondal/strongroom/security/advisories/new),
 never in a public issue.
 
 ## Licence

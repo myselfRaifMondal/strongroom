@@ -1,0 +1,53 @@
+name: Bug report
+description: Something does not work as expected (not a security vulnerability).
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security issues do not belong here.** Use *Report a security vulnerability* instead.
+        **Never paste real passwords, Secret Keys, vault files or exports** into an issue.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [macOS app, Windows app, Android app, Rust core (vtf-core / vault-core), FFI, File format (VTF), Docs, CI / build]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: e.g. main @ abc1234, or app version 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS and device
+      placeholder: e.g. macOS 26.6 on M2, Windows 11 x64, Android 14 Pixel 7
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use made-up test data only.
+      placeholder: |
+        1. Create a vault
+        2. Add a login with …
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened instead
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Check that they contain no secrets before attaching.
+      render: shell

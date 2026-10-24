@@ -1,0 +1,34 @@
+name: Feature request
+description: Suggest an improvement or a new feature.
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Strongroom is local-only by design: no server, no account, no cloud sync.
+        Requests that need a server are out of scope. Changes to the VTF file format
+        or the FFI contract need a design discussion first (see CONTRIBUTING.md).
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and why is it hard today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security impact
+      description: Does this touch keys, passwords, the file format, the clipboard, or the network? How?
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to work on this myself.
