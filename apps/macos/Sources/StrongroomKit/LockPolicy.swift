@@ -120,7 +120,7 @@ public final class LockCoordinator {
     public func update(_ settings: LockSettings) {
         self.settings = settings
         // A newly chosen interval counts from now, not from long ago.
-        noteActivity()
+        lastActivity = now()
     }
 
     /// Returns true if the event locked (or would have locked) the vault.
@@ -135,7 +135,11 @@ public final class LockCoordinator {
     }
 
     /// Any interaction with a Strongroom window, the overlay or the menu.
+    /// If the idle deadline has already passed (the periodic check can run
+    /// late while the app is napping in the background), locks first, so an
+    /// interaction never extends an expired session.
     public func noteActivity() {
+        checkIdle()
         lastActivity = now()
     }
 

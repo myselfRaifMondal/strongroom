@@ -263,7 +263,12 @@ Default (app-side only; no FFI, UDL or format change):
   (`com.apple.screensaver.didstart`) by default, with a Settings toggle; idle
   lock off by default, choosable as 5/15/30/60 minutes or 4 hours since the
   last Strongroom interaction (events delivered to the app's windows, the
-  overlay, the hotkey and the menu; checked every 15 s). A lock drops the
+  overlay, the hotkey and the menu; checked every 15 s). In the background
+  macOS can delay that timer (App Nap timer coalescing: in a test with a
+  5-minute setting the lock fired after about 6 minutes), so every
+  interaction (hotkey, menu, a click or key in a window) first checks the
+  deadline and locks if it has passed; an expired session is never shown
+  or extended. A lock drops the
   vault object, items, health/reuse map, ranking and strength cache, closes
   the overlay, sheets and modal alerts/file panels (an auto-type confirmation
   open at that moment never types), and clears a pending clipboard secret at

@@ -174,6 +174,19 @@ private func privatePasteboard() -> NSPasteboard {
         #expect(session.lockCalls == [.idleTimeout])
     }
 
+    @Test func lateInteractionLocksInsteadOfExtending() {
+        // The periodic check did not run (app napping); the next interaction
+        // after the deadline must lock, not restart the countdown.
+        let clock = TestClock()
+        let session = FakeSession()
+        let c = LockCoordinator(settings: LockSettings(idleLock: .fifteenMinutes), clipboard: nil, now: { clock.t })
+        c.session = session
+        clock.advance(901)
+        c.noteActivity()
+        #expect(session.lockCalls == [.idleTimeout])
+        #expect(!session.vaultOpen)
+    }
+
     @Test func idleNeverDoesNotLock() {
         let clock = TestClock()
         let session = FakeSession()
