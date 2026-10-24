@@ -19,7 +19,7 @@ native app on top of it.
 | Platform | App | Status |
 |----------|-----|--------|
 | macOS    | SwiftUI (`apps/macos`) | Usable; built with SwiftPM, no Xcode needed |
-| Windows  | WinUI 3 (`apps/windows`) | Builds and runs in CI; not yet hand-tested |
+| Windows  | WinUI 3 (`apps/windows`) | Builds and runs in CI; not yet hand-tested. Installers (x64, ARM64): [install guide](apps/windows/INSTALL.md) |
 | Android  | Jetpack Compose (`apps/android`) | Runs on emulator; not yet hand-tested on devices |
 | iOS      | — | Deferred (see [OQ-14](docs/OPEN-QUESTIONS.md)) |
 

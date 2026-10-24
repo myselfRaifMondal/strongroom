@@ -77,7 +77,7 @@ foreach ($b in $binaries) {
             }
             continue
         }
-        $problems.Add("$($b.Name) needs $dll: not in the package and not a Windows system DLL")
+        $problems.Add("$($b.Name) needs ${dll}: not in the package and not a Windows system DLL")
     }
 }
 

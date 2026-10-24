@@ -34,7 +34,9 @@ memory), so the full suite needs a few minutes and about 1 GB of free RAM.
 | Windows | Windows 10/11, Rust MSVC toolchain, .NET 8 SDK, `uniffi-bindgen-cs` | `apps/windows/scripts/build-native.ps1`, then `gen-bindings.ps1`, then `dotnet build` |
 
 The workflows in `.github/workflows/` show the exact, tested commands for
-each platform.
+each platform. The Windows installers (Inno Setup, x64 and ARM64) are built
+and smoke-tested by `windows-installer.yml` from `apps/windows/installer/`;
+the end-user guide is [apps/windows/INSTALL.md](apps/windows/INSTALL.md).
 
 ### Where things are
 
