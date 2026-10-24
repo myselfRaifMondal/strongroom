@@ -38,13 +38,19 @@ $expectedMachine = if ($Machine -eq "x64") { "8664 machine (x64)" } else { "AA64
 $problems = [System.Collections.Generic.List[string]]::new()
 $crtHits = [System.Collections.Generic.List[string]]::new()
 $systemSeen = @{}
+$hybrid = [System.Collections.Generic.List[string]]::new()
 $managedOnly = 0
 
 foreach ($b in $binaries) {
     $headers = & $Dumpbin /nologo /headers $b.FullName 2>&1 | Out-String
     $machineLine = ($headers -split "`n" | Where-Object { $_ -match '^\s+\w+ machine \(' } | Select-Object -First 1)
     $machineLine = if ($machineLine) { $machineLine.Trim() } else { "" }
-    if ($machineLine -ne $expectedMachine) {
+    if ($machineLine -match '\(ARM64X\)') {
+        # ARM64X hybrid images (e.g. Windows App SDK *_ec.dll) hold both ARM64
+        # and ARM64EC/x64-compatible code; Windows loads them for x64 apps
+        # running under emulation on ARM PCs. Shipped by Microsoft on purpose.
+        $hybrid.Add($b.Name)
+    } elseif ($machineLine -ne $expectedMachine) {
         # Pure IL (AnyCPU) assemblies carry an x86 header with the ILONLY flag; that is fine.
         $clr = & $Dumpbin /nologo /clrheader $b.FullName 2>&1 | Out-String
         if ($clr -notmatch 'IL Only') { $problems.Add("$($b.Name): built for '$machineLine', expected '$expectedMachine'") }
@@ -82,6 +88,7 @@ foreach ($b in $binaries) {
 }
 
 "binaries scanned: $($binaries.Count) ($managedOnly with no native imports, i.e. pure IL)"
+if ($hybrid.Count -gt 0) { "ARM64X hybrid images (accepted): $($hybrid -join ', ')" }
 "Windows system DLLs referenced: $(($systemSeen.Keys | Sort-Object) -join ', ')"
 if ($crtHits.Count -gt 0) {
     "Visual C++ runtime imports (each must be app-local):"
