@@ -92,7 +92,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Cache uniffi-bindgen-cs
         id: cache-bindgen
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/bin/uniffi-bindgen-cs.exe
           key: uniffi-bindgen-cs-${{ env.UNIFFI_BINDGEN_CS_TAG }}-windows
