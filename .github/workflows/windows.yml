@@ -43,7 +43,7 @@ jobs:
       # Keep LF line endings: vectors/manifest.json and other fixtures are
       # compared byte-for-byte (the repo has no .gitattributes).
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Rust toolchain
         run: |
           rustup show active-toolchain
@@ -73,7 +73,7 @@ jobs:
       # Keep LF line endings: vectors/manifest.json and other fixtures are
       # compared byte-for-byte (the repo has no .gitattributes).
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
         with:
           key: tests
@@ -89,7 +89,7 @@ jobs:
       # Keep LF line endings: vectors/manifest.json and other fixtures are
       # compared byte-for-byte (the repo has no .gitattributes).
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Cache uniffi-bindgen-cs
         id: cache-bindgen
         uses: actions/cache@v4
@@ -120,7 +120,7 @@ jobs:
       # Keep LF line endings: vectors/manifest.json and other fixtures are
       # compared byte-for-byte (the repo has no .gitattributes).
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
