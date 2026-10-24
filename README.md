@@ -17,7 +17,9 @@ native app on top of it.
 | iOS      | — | Deferred (see [OQ-14](docs/OPEN-QUESTIONS.md)) |
 
 > **Pre-release software.** It has not had an independent security audit.
-> Keep a copy of your passwords elsewhere until it has.
+> Publishing the source code lets people review it; it does not by itself
+> make the software secure. Keep a copy of your passwords elsewhere until it
+> has been audited.
 
 ## What it does
 
@@ -42,12 +44,15 @@ native app on top of it.
 - No network access at all (an opt-in breach check is planned and will be
   off by default).
 
-## How it is secured
+## Security design
+
+These are design goals and the checks that test them, not a guarantee.
 
 - Master password **and** a 128-bit Secret Key are both needed to open a
   vault. Argon2id (256 MiB, t=3, p=4) + HKDF-SHA-256, XChaCha20-Poly1305,
   HPKE with P-256 for device-bound files, SQLCipher for the local store.
-- No new cryptographic primitives: only audited RustCrypto crates.
+- No new cryptographic primitives: it composes existing, widely used
+  RustCrypto crates (not all of which have had third-party audits).
 - The file format is specified byte-for-byte in
   [docs/SPEC-VTF.md](docs/SPEC-VTF.md), with positive and negative test
   vectors in [vectors/](vectors/) and an independent Python reference
@@ -59,6 +64,29 @@ native app on top of it.
 
 **There is no recovery.** If you lose your master password or your Secret
 Key, your vault cannot be opened by anyone, including the developers.
+
+## Known limitations
+
+- **No independent security audit** yet.
+- **macOS:** the app is ad-hoc signed and not notarized, so other Macs show
+  a Gatekeeper warning on first launch, and weekly reminder notifications are
+  unavailable (reminders appear as a banner on unlock instead). Built for
+  macOS 14+, but only run on macOS 26.
+- **Windows:** built and tested only on GitHub Actions runners. Windows Hello
+  and the TPM-backed key have not been tested on real hardware, and the app
+  enforces the Hello prompt rather than the TPM ([OQ-W1](docs/OPEN-QUESTIONS.md)).
+- **Android:** tested on an emulator only. Autofill on real forms is
+  untested, and biometric unlock uses a 10-second authorisation window rather
+  than per-use binding ([OQ-9](docs/OPEN-QUESTIONS.md)). Device-key features
+  need Android 12 (API 31) or later.
+- **iOS:** not available.
+- **Memory:** passwords passing through Swift, Kotlin or C# strings cannot be
+  reliably wiped, and SQLite's page cache is not wiped on free
+  ([OQ-12](docs/OPEN-QUESTIONS.md)).
+- **Rollback:** replacing the local vault files with an older copy is not
+  detected.
+- **Breach checking** (Have I Been Pwned) is not implemented yet.
+- Full list of open design questions: [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md).
 
 ## Build the macOS app
 
