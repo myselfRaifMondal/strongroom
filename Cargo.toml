@@ -4,7 +4,7 @@ members = ["crates/vtf-core", "crates/vault-core", "crates/strongroom-ffi"]
 
 [workspace.package]
 edition = "2021"
-license = "UNLICENSED"
+license = "GPL-3.0-or-later"
 publish = false
 rust-version = "1.85"
 
