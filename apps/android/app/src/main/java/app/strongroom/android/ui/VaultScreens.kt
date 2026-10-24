@@ -222,6 +222,7 @@ fun UnlockContent(vaultName: String, onBack: (() -> Unit)?, onUnlocked: () -> Un
                                 onFailedAttempt = { unlocker.biometricFailure() },
                             )
                             if (result is BiometricResult.Error) {
+                                if (result.isLockout) core { unlocker.biometricLockedOut() }
                                 reason = core { unlocker.passwordRequiredReason() }
                                 throw IllegalStateException(result.message)
                             }

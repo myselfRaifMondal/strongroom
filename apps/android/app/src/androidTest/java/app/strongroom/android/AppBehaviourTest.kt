@@ -8,7 +8,11 @@ import android.content.pm.PackageManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.strongroom.android.autofill.AutofillUnlockActivity
+import app.strongroom.android.core.VaultFiles
+import app.strongroom.android.core.VaultUnlocker
 import app.strongroom.android.security.SecureClipboard
+import uniffi.strongroom.PasswordRequiredReason
+import uniffi.strongroom.UnlockGate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -37,6 +41,31 @@ class AppBehaviourTest {
         val pkg = context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
         val perms = pkg.requestedPermissions.orEmpty().toList()
         assertFalse(perms.toString(), perms.any { it.contains("INTERNET") || it.contains("NETWORK_STATE") || it.contains("WIFI_STATE") })
+    }
+
+    /**
+     * Regression: the OS reports the 5th rejected finger as ERROR_LOCKOUT, not
+     * as a failed attempt, so the gate never reached 5 and kept offering
+     * biometrics. A lockout must leave the gate demanding the password.
+     */
+    @Test
+    fun biometricLockoutRequiresPassword() {
+        val name = "lockout-test-${System.nanoTime() % 100000}"
+        val files = VaultFiles(context)
+        try {
+            val unlocker = VaultUnlocker(context, name)
+            unlocker.recordPasswordUnlock()
+            val gate = UnlockGate(files.gateStatePath(name))
+            val now = System.currentTimeMillis() / 1000
+            assertEquals(PasswordRequiredReason.NOT_REQUIRED, gate.check(now, false, false, true))
+            unlocker.biometricLockedOut()
+            assertEquals(
+                PasswordRequiredReason.TOO_MANY_BIOMETRIC_FAILURES,
+                UnlockGate(files.gateStatePath(name)).check(now, false, false, true),
+            )
+        } finally {
+            java.io.File(files.gateStatePath(name)).delete()
+        }
     }
 
     /** Copy marks the clip sensitive and clears it after 25 s. Needs a focused activity to read the clipboard. */
