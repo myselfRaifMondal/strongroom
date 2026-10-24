@@ -25,13 +25,33 @@ android {
         }
     }
 
+    // Release signing is optional and comes only from the environment, so no
+    // key or password is ever committed. Without these variables the release
+    // build is produced unsigned.
+    val releaseKeystore = System.getenv("STRONGROOM_ANDROID_KEYSTORE")
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("STRONGROOM_ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("STRONGROOM_ANDROID_KEY_ALIAS") ?: "strongroom"
+                keyPassword = System.getenv("STRONGROOM_ANDROID_KEY_PASSWORD")
+                    ?: System.getenv("STRONGROOM_ANDROID_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // Debug keystore is the Gradle default (~/.android/debug.keystore);
-            // nothing is committed. No release signing is configured.
+            // nothing is committed.
         }
         release {
             isMinifyEnabled = false
+            isDebuggable = false
+            if (releaseKeystore != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
