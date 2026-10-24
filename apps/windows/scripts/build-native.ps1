@@ -1,8 +1,14 @@
 # Builds strongroom_ffi.dll for Windows and stages it under apps/windows/native/<rid>/.
-#   pwsh apps/windows/scripts/build-native.ps1 [-Target x86_64-pc-windows-msvc] [-BuildProfile release]
+#   pwsh apps/windows/scripts/build-native.ps1 [-Target x86_64-pc-windows-msvc] [-BuildProfile release] [-StaticCrt]
+#
+# -StaticCrt links the MSVC C runtime statically (`-C target-feature=+crt-static`)
+# so the DLL does not need the Visual C++ Redistributable (VCRUNTIME140.dll)
+# on the user's machine. The installer build uses it. Only the target's flags
+# change (CARGO_TARGET_<TRIPLE>_RUSTFLAGS); nothing under crates/ is touched.
 param(
     [string]$Target = "x86_64-pc-windows-msvc",
-    [string]$BuildProfile = "release"
+    [string]$BuildProfile = "release",
+    [switch]$StaticCrt
 )
 $ErrorActionPreference = "Stop"
 $repo = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
@@ -14,6 +20,13 @@ $rid = switch ($Target) {
 
 Push-Location $repo
 try {
+    if ($StaticCrt) {
+        $flagsVar = "CARGO_TARGET_" + ($Target.ToUpperInvariant() -replace '-', '_') + "_RUSTFLAGS"
+        $existing = [Environment]::GetEnvironmentVariable($flagsVar)
+        $flags = (@($existing, "-C target-feature=+crt-static") | Where-Object { $_ }) -join " "
+        [Environment]::SetEnvironmentVariable($flagsVar, $flags)
+        "static CRT: $flagsVar=$flags"
+    }
     $cargoArgs = [System.Collections.Generic.List[string]]::new()
     $cargoArgs.AddRange([string[]]@("build", "-p", "strongroom-ffi", "--lib", "--target", $Target))
     if ($BuildProfile -eq "release") { $cargoArgs.Add("--release") }

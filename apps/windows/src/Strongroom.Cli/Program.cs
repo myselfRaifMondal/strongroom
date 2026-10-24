@@ -38,6 +38,7 @@ internal static class Program
                 "list" => List(args),
                 "export" => Export(args),
                 "import" => Import(args),
+                "import-csv" => ImportCsv(args),
                 "inspect" => Inspect(args),
                 "roundtrip" => RoundTrip(args),
                 "probe" => Probe(),
@@ -70,6 +71,7 @@ internal static class Program
               list      --vault PATH
               export    --vault PATH --out FILE.vtf
               import    --in FILE.vtf [--vault PATH]     prints imported item titles
+              import-csv --vault PATH --in FILE.csv --source chrome|bitwarden|1password|lastpass
               inspect   --in FILE.vtf
               roundtrip --dir DIR                        create, add, export, import into a second vault
               probe                                      FFI load + TPM / CNG key-agreement availability
@@ -179,6 +181,24 @@ internal static class Program
             if (tempDir is not null)
                 Directory.Delete(tempDir, recursive: true);
         }
+        return ExitOk;
+    }
+
+    private static int ImportCsv(Args a)
+    {
+        var source = a.Required("source").ToLowerInvariant() switch
+        {
+            "chrome" or "edge" => CsvSource.Chrome,
+            "bitwarden" => CsvSource.Bitwarden,
+            "1password" or "onepassword" => CsvSource.OnePassword,
+            "lastpass" => CsvSource.LastPass,
+            var other => throw new UsageException($"unknown --source {other}"),
+        };
+        var csv = File.ReadAllText(a.Required("in"));
+        using var vault = Open(a);
+        var s = vault.ImportCsv(source, csv, Clock.Now());
+        Console.WriteLine($"IMPORTED CSV: added={s.Added} updated={s.Updated} unchanged={s.Unchanged} conflicts={s.Conflicts}");
+        PrintTitles(vault);
         return ExitOk;
     }
 

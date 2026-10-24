@@ -16,6 +16,9 @@ public sealed partial class MainWindow : Window
         var protection = CaptureExclusion.Apply(Hwnd);
         Diag.Log($"main window: capture protection = {protection} (display affinity 0x{CaptureExclusion.Current(Hwnd):X})");
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1000, 720));
+        var icon = Path.Combine(AppContext.BaseDirectory, "Strongroom.ico");
+        if (File.Exists(icon))
+            AppWindow.SetIcon(icon);
 
         AppServices.VaultChanged += () =>
         {

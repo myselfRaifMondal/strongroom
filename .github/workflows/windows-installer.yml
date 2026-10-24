@@ -1,0 +1,343 @@
+# Windows installers (Inno Setup) for x64 and ARM64, plus portable zips.
+#
+# Output: one workflow artifact, `strongroom-windows-installers` (30 days):
+#   Strongroom-Setup-<ver>-x64.exe, Strongroom-Setup-<ver>-arm64.exe,
+#   Strongroom-<ver>-x64-portable.zip, Strongroom-<ver>-arm64-portable.zip,
+#   SHA256SUMS.txt
+#
+# Nothing is published: no GitHub Release is created (that needs the owner).
+# Everything is self-contained (.NET 8, Windows App SDK, static MSVC CRT in
+# strongroom_ffi.dll), so a fresh Windows 10 1809+/11 PC needs nothing else.
+name: windows-installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (e.g. 0.1.0 or 0.2.0-beta.1)"
+        required: false
+        default: "0.1.0"
+  push:
+    tags: ["v*"]
+    branches: ["feature/windows-installer"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-installer-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  UNIFFI_BINDGEN_CS_TAG: "v0.11.1+v0.31.0"
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      numeric: ${{ steps.v.outputs.numeric }}
+    steps:
+      - id: v
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          v="0.1.0"
+          if [ "$REF_TYPE" = "tag" ]; then v="${REF_NAME#v}"; fi
+          if [ -n "${INPUT_VERSION:-}" ]; then v="$INPUT_VERSION"; fi
+          if ! printf '%s' "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::invalid version '$v' (want MAJOR.MINOR.PATCH[-pre])"; exit 1
+          fi
+          n="${v%%-*}.0"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "numeric=$n" >> "$GITHUB_OUTPUT"
+          echo "version $v (file version $n)"
+
+  native:
+    name: strongroom_ffi.dll ${{ matrix.rid }} (static CRT)
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            rid: win-x64
+          - target: aarch64-pc-windows-msvc
+            rid: win-arm64
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - name: Rust toolchain
+        run: |
+          rustup show active-toolchain
+          rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: installer-crt-static-${{ matrix.target }}
+      - name: Build DLL with the static MSVC runtime
+        shell: pwsh
+        run: apps/windows/scripts/build-native.ps1 -Target ${{ matrix.target }} -StaticCrt
+      - name: No Visual C++ runtime import
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $dumpbin = & $vswhere -latest -products * -find "**\Hostx64\x64\dumpbin.exe" | Select-Object -First 1
+          $dll = "apps/windows/native/${{ matrix.rid }}/strongroom_ffi.dll"
+          $deps = & $dumpbin /nologo /dependents $dll | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '\.dll$' }
+          "strongroom_ffi.dll (${{ matrix.rid }}) imports:"; $deps | ForEach-Object { "  $_" }
+          $crt = $deps | Where-Object { $_ -match '^(vcruntime|msvcp|vcomp|concrt)\d' }
+          if ($crt) { "::error::strongroom_ffi.dll still imports the VC++ runtime: $($crt -join ', ')"; exit 1 }
+          "OK: strongroom_ffi.dll does not need the Visual C++ Redistributable"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-native-${{ matrix.rid }}
+          path: apps/windows/native/${{ matrix.rid }}/strongroom_ffi.dll
+          retention-days: 1
+          if-no-files-found: error
+
+  bindings:
+    name: C# bindings
+    runs-on: windows-latest
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - name: Cache uniffi-bindgen-cs
+        id: cache-bindgen
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/uniffi-bindgen-cs.exe
+          key: uniffi-bindgen-cs-${{ env.UNIFFI_BINDGEN_CS_TAG }}-windows
+      - name: Install uniffi-bindgen-cs
+        if: steps.cache-bindgen.outputs.cache-hit != 'true'
+        run: cargo install uniffi-bindgen-cs --git https://github.com/NordSecurity/uniffi-bindgen-cs --tag "${{ env.UNIFFI_BINDGEN_CS_TAG }}" --locked
+      - name: Generate
+        shell: pwsh
+        run: apps/windows/scripts/gen-bindings.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-bindings-cs
+          path: apps/windows/src/Strongroom.Core/Generated/strongroom.cs
+          retention-days: 1
+          if-no-files-found: error
+
+  package:
+    name: package ${{ matrix.arch }}
+    needs: [version, native, bindings]
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            rid: win-x64
+            platform: x64
+          - arch: arm64
+            rid: win-arm64
+            platform: ARM64
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      VERSION_NUMERIC: ${{ needs.version.outputs.numeric }}
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer-native-${{ matrix.rid }}
+          path: apps/windows/native/${{ matrix.rid }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer-bindings-cs
+          path: apps/windows/src/Strongroom.Core/Generated
+
+      - name: App icon (.ico from the shared 1024 px PNG)
+        shell: powershell
+        run: apps/windows/installer/make-icon.ps1
+
+      - name: Publish CLI + app (self-contained ${{ matrix.rid }})
+        shell: pwsh
+        run: |
+          $out = "apps/windows/out/publish-${{ matrix.arch }}"
+          # CLI first, then the app on top: where the two share a file (the
+          # .NET runtime, Strongroom.Core.dll, CsWinRT), the app's copy wins.
+          dotnet publish apps/windows/src/Strongroom.Cli/Strongroom.Cli.csproj -c Release `
+            -r ${{ matrix.rid }} --self-contained true -p:StrongroomNativeRid=${{ matrix.rid }} `
+            -p:Version=$env:VERSION -p:FileVersion=$env:VERSION_NUMERIC -o $out
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet publish apps/windows/src/Strongroom.App/Strongroom.App.csproj -c Release `
+            -p:Platform=${{ matrix.platform }} -r ${{ matrix.rid }} --self-contained true `
+            -p:WindowsAppSDKSelfContained=true -p:WindowsPackageType=None -p:StrongroomNativeRid=${{ matrix.rid }} `
+            -p:Version=$env:VERSION -p:FileVersion=$env:VERSION_NUMERIC -o $out
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Debug symbols are not shipped.
+          Get-ChildItem $out -Recurse -Filter *.pdb | Remove-Item
+          foreach ($f in "Strongroom.exe", "strongroom-cli.exe", "strongroom_ffi.dll", "Strongroom.ico", "Microsoft.WindowsAppRuntime.dll") {
+            if (-not (Test-Path (Join-Path $out $f))) { "::error::publish output lacks $f"; exit 1 }
+          }
+          $files = Get-ChildItem $out -Recurse -File
+          "publish output: $($files.Count) files, $([math]::Round(($files | Measure-Object Length -Sum).Sum / 1MB)) MB"
+          (Get-Item (Join-Path $out "Strongroom.exe")).VersionInfo | Format-List FileVersion, ProductVersion
+
+      - name: Dependency check (whole output folder)
+        shell: pwsh
+        run: apps/windows/installer/check-deps.ps1 -Dir apps/windows/out/publish-${{ matrix.arch }} -Machine ${{ matrix.arch }}
+
+      # ------------------------------------------------------------------
+      # Code signing placeholder (DISABLED). There is no certificate yet, so
+      # the binaries and installers are unsigned and SmartScreen warns.
+      # When an Azure Trusted Signing account exists, enable this step (and
+      # the matching one after ISCC below), add the federated-credential
+      # secrets in the repo settings, and grant `id-token: write`.
+      # Nothing here reads a secret today.
+      # ------------------------------------------------------------------
+      - name: Sign binaries (Azure Trusted Signing) - DISABLED placeholder
+        if: ${{ false }}
+        shell: pwsh
+        # To enable: replace this step with azure/trusted-signing-action
+        # (pinned to a release), e.g.
+        #   uses: azure/trusted-signing-action@<version>
+        #   with:
+        #     endpoint: https://<region>.codesigning.azure.net/
+        #     trusted-signing-account-name: <account>
+        #     certificate-profile-name: <profile>
+        #     files-folder: apps/windows/out/publish-${{ matrix.arch }}
+        #     files-folder-filter: exe,dll
+        #     file-digest: SHA256
+        #     timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        #     timestamp-digest: SHA256
+        # and authenticate with azure/login (OIDC; no stored passwords).
+        run: "'signing is not configured'"
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (-not (Test-Path $iscc)) { "::error::ISCC.exe not found"; exit 1 }
+          "ISCC: $iscc ($((Get-Item $iscc).VersionInfo.ProductVersion))"
+          "ISCC=$iscc" >> $env:GITHUB_ENV
+
+      - name: Build installer + portable zip
+        shell: pwsh
+        run: |
+          $src = (Resolve-Path "apps/windows/out/publish-${{ matrix.arch }}").Path
+          $dist = Join-Path $PWD "apps/windows/installer/out"
+          New-Item -ItemType Directory -Force $dist | Out-Null
+          $ico = (Resolve-Path "apps/windows/src/Strongroom.App/Assets/Strongroom.ico").Path
+          & $env:ISCC /Q "/DAppVersion=$env:VERSION" "/DAppVersionNumeric=$env:VERSION_NUMERIC" "/DArch=${{ matrix.arch }}" `
+            "/DSourceDir=$src" "/DIconFile=$ico" "/DOutputDir=$dist" apps/windows/installer/Strongroom.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Portable zip: the same files in a top-level Strongroom folder.
+          $stage = Join-Path $env:RUNNER_TEMP "portable/Strongroom"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item "$src/*" $stage -Recurse -Force
+          Set-Content (Join-Path $stage "README-PORTABLE.txt") -Encoding utf8 -Value @(
+            "Strongroom $env:VERSION (${{ matrix.arch }}), portable copy.",
+            "",
+            "1. Right-click the downloaded .zip, choose Properties, tick 'Unblock', click OK.",
+            "2. Extract it somewhere you can write to, e.g. your Documents folder.",
+            "3. Double-click Strongroom.exe.",
+            "",
+            "Your vault is stored in %LOCALAPPDATA%\Strongroom, not in this folder.",
+            "Deleting this folder does not delete your vault.",
+            "Full guide: https://github.com/myselfRaifMondal/strongroom/blob/main/apps/windows/INSTALL.md")
+          $zip = Join-Path $dist "Strongroom-$env:VERSION-${{ matrix.arch }}-portable.zip"
+          Compress-Archive -Path $stage -DestinationPath $zip -CompressionLevel Optimal -Force
+          Get-ChildItem $dist | Format-Table Name, Length
+
+      - name: Sign installer (Azure Trusted Signing) - DISABLED placeholder
+        if: ${{ false }}
+        shell: pwsh
+        # Same action as above with files-folder: apps/windows/installer/out
+        # and files-folder-filter: exe. Inno Setup can also sign the
+        # uninstaller via SignTool= / SignedUninstaller=yes once a signer exists.
+        run: "'signing is not configured'"
+
+      - name: Microsoft Defender scan of the installer (informational)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $mp = Join-Path $env:ProgramFiles "Windows Defender\MpCmdRun.exe"
+          if (-not (Test-Path $mp)) { "Defender command line not present on this runner"; exit 0 }
+          try { Get-MpComputerStatus | Format-List AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, AntivirusSignatureVersion } catch { "Get-MpComputerStatus: $($_.Exception.Message)" }
+          Get-ChildItem apps/windows/installer/out -File | ForEach-Object {
+            "--- $($_.Name)"
+            & $mp -Scan -ScanType 3 -File $_.FullName -DisableRemediation
+            "MpCmdRun exit code: $LASTEXITCODE (0 = no threat found, 2 = threat found)"
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.arch }}
+          path: apps/windows/installer/out/*
+          retention-days: 3
+          if-no-files-found: error
+
+  smoke-x64:
+    name: smoke test x64 (windows-latest)
+    needs: [version, package]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: apps/windows/installer
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-x64
+          path: dist
+      - name: install -> launch -> CLI round-trip -> uninstall -> data kept
+        shell: pwsh
+        run: apps/windows/installer/smoke-test.ps1 -Installer "dist/Strongroom-Setup-${{ needs.version.outputs.version }}-x64.exe"
+
+  smoke-arm64:
+    # GitHub's hosted Windows 11 ARM64 runner (free for public repositories).
+    name: smoke test arm64 (windows-11-arm)
+    needs: [version, package]
+    runs-on: windows-11-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: apps/windows/installer
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-arm64
+          path: dist
+      - name: install -> launch -> CLI round-trip -> uninstall -> data kept
+        shell: pwsh
+        run: apps/windows/installer/smoke-test.ps1 -Installer "dist/Strongroom-Setup-${{ needs.version.outputs.version }}-arm64.exe"
+
+  collect:
+    name: collect installers + SHA256SUMS
+    needs: [version, package, smoke-x64, smoke-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          path: dist
+          merge-multiple: true
+      - name: SHA256SUMS.txt
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum Strongroom-* | tee SHA256SUMS.txt
+          ls -l
+      - uses: actions/upload-artifact@v4
+        with:
+          name: strongroom-windows-installers
+          path: dist/
+          retention-days: 30
+          if-no-files-found: error

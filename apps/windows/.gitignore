@@ -4,3 +4,5 @@
 /out/
 *.user
 .vs/
+/src/Strongroom.App/Assets/Strongroom.ico
+/installer/out/

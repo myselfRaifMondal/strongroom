@@ -72,4 +72,12 @@ public static class Dialogs
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
         return await picker.PickSingleFileAsync();
     }
+
+    public static async Task<StorageFile?> OpenCsv(nint hwnd)
+    {
+        var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.Downloads };
+        picker.FileTypeFilter.Add(".csv");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+        return await picker.PickSingleFileAsync();
+    }
 }

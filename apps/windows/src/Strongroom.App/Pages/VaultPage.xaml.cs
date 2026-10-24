@@ -104,6 +104,28 @@ public sealed partial class VaultPage : Page
         }
     }
 
+    private async void OnImportCsv(object sender, RoutedEventArgs e)
+    {
+        var vault = AppServices.Vault;
+        if (vault is null || AppServices.Main is null) return;
+        if (sender is not MenuFlyoutItem { Tag: string tag } || !Enum.TryParse<CsvSource>(tag, out var source)) return;
+        var file = await Dialogs.OpenCsv(AppServices.Main.Hwnd);
+        if (file is null) return;
+        try
+        {
+            var csv = await File.ReadAllTextAsync(file.Path);
+            var s = await CoreThread.RunAsync(() => vault.ImportCsv(source, csv, Clock.Now()));
+            Refresh();
+            await Dialogs.Info(XamlRoot, "Import finished",
+                $"Imported: {s.Added} added, {s.Updated} updated, {s.Unchanged} unchanged, {s.Conflicts} conflicts.\n\n" +
+                $"The file {file.Path} still holds your passwords in plain text. Delete it now, then empty the Recycle Bin.");
+        }
+        catch (Exception ex)
+        {
+            AppServices.Main.Notify(CoreErrors.Describe(ex), InfoBarSeverity.Error);
+        }
+    }
+
     private async void OnHelloToggle(object sender, RoutedEventArgs e)
     {
         var vault = AppServices.Vault;

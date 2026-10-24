@@ -16,6 +16,16 @@
             <AppBarButton Icon="Permissions" Label="Generator" Click="OnGenerator" />
             <AppBarButton Icon="Upload" Label="Export VTF" Click="OnExport" />
             <AppBarButton Icon="Download" Label="Import VTF" Click="OnImport" />
+            <AppBarButton Icon="OpenFile" Label="Import passwords (CSV)">
+                <AppBarButton.Flyout>
+                    <MenuFlyout Placement="Bottom">
+                        <MenuFlyoutItem Text="From Chrome or Edge" Tag="Chrome" Click="OnImportCsv" />
+                        <MenuFlyoutItem Text="From Bitwarden" Tag="Bitwarden" Click="OnImportCsv" />
+                        <MenuFlyoutItem Text="From 1Password" Tag="OnePassword" Click="OnImportCsv" />
+                        <MenuFlyoutItem Text="From LastPass" Tag="LastPass" Click="OnImportCsv" />
+                    </MenuFlyout>
+                </AppBarButton.Flyout>
+            </AppBarButton>
             <AppBarButton x:Name="HelloToggle" Icon="Contact" Label="Windows Hello" Click="OnHelloToggle" />
             <AppBarButton Icon="Find" Label="Quick access (Ctrl+Shift+Space)" Click="OnQuickAccess" />
             <AppBarButton Icon="Placeholder" Label="Lock" Click="OnLock" />
