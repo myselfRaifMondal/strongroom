@@ -128,10 +128,16 @@ public struct ItemDraft: Equatable {
     }
 
     /// Adds the template's named fields that an older item does not have yet.
+    /// Also restores the empty seed-word slots of a wallet (empty words are
+    /// not stored) up to the next standard phrase length.
     public mutating func ensureTemplateFields() {
         guard let template else { return }
         for f in template.fields where !fields.contains(where: { $0.name.caseInsensitiveCompare(f.name) == .orderedSame }) {
             fields.append(Field(name: f.name, value: "", concealed: f.concealed))
+        }
+        if template.sections.contains(.seedPhrase) {
+            let highest = SeedPhrase.highestWordNumber(fields.map(\.name))
+            setSeedWordCount(SeedPhrase.standardLengths.first { $0 >= highest } ?? highest)
         }
     }
 

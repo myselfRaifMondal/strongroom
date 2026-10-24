@@ -203,6 +203,71 @@ func roundTrip(_ a: Args) throws -> Int32 {
     return exitOk
 }
 
+/// Nested folders, templates, favourites and recovery codes (one marked used)
+/// survive export_vtf -> import_vtf field for field.
+func hierarchyRoundTrip(_ a: Args) throws -> Int32 {
+    let dir = URL(fileURLWithPath: try a.required("dir"), isDirectory: true)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    let pw = try password()
+    let now = Clock.now()
+    let sk = try newSecretKey()
+    try SecureFile.write(Data(sk.utf8), to: dir.appendingPathComponent("hier-a.secret-key.txt"))
+
+    func account(_ title: String, _ folder: String, _ codes: [String]) -> ItemInput {
+        var d = ItemDraft(template: ItemTemplate.named("social")!)
+        d.title = title
+        d.username = String(title.dropFirst())
+        d.password = "pw-\(title)-7#Lq"
+        d.folder = folder
+        d.urls = ["https://instagram.com"]
+        d.addRecoveryCodes(codes)
+        d.favourite = true
+        return d.toInput()
+    }
+    var personal = account("@personal", "Social/Instagram", ["1111-2222", "3333-4444", "5555-6666"])
+    personal.fields = RecoveryCodes.setUsed(personal.fields, index: personal.fields.firstIndex { $0.value == "3333-4444" }!, used: true)
+    var bank = ItemDraft(template: ItemTemplate.named("bank")!)
+    bank.title = "Savings"
+    bank.folder = "Finance / Banks / HDFC"
+    bank.fields[bank.fields.firstIndex { $0.name == "Account number" }!].value = "000123456789"
+    bank.fields.append(.init(name: "PIN (ATM)", value: "4321", concealed: true))
+    let originals = [personal, account("@work", "Social/Instagram", ["aaaa-bbbb"]), bank.toInput()]
+
+    let source = try Vault.create(path: dir.appendingPathComponent("hier-a.srdb").path, password: pw, secretKey: sk, now: now)
+    for o in originals { _ = try source.addItem(input: o, now: now) }
+    let vtf = try source.exportVtf(password: pw, secretKey: sk, deviceRecipients: [], now: now)
+    source.lock()
+    try SecureFile.write(vtf, to: dir.appendingPathComponent("macos-hierarchy.vtf"))
+
+    let target = try Vault.create(path: dir.appendingPathComponent("hier-b.srdb").path, password: pw, secretKey: try newSecretKey(), now: now + 1)
+    defer { target.lock() }
+    let s = try target.importVtf(file: vtf, password: pw, secretKey: sk, now: now + 1)
+    out("IMPORTED: added=\(s.added) updated=\(s.updated) unchanged=\(s.unchanged) conflicts=\(s.conflicts)")
+    let summaries = try target.search(query: "", folder: nil, tag: nil)
+    var ok = summaries.count == originals.count
+    for o in originals {
+        guard let sum = summaries.first(where: { $0.title == o.title }) else { ok = false; continue }
+        let got = try target.getItem(id: sum.id).data
+        let same = got == o
+        ok = ok && same
+        // Counts only: field values are secrets and are never printed.
+        out("ITEM \(o.title): folder=\(got.folder ?? "-") fields=\(got.fields.count) unused-codes=\(RecoveryCodes.unusedCount(got.fields)) \(same ? "identical" : "DIFFERENT")")
+    }
+    func printTree(_ nodes: [FolderNode], _ depth: Int) {
+        for n in nodes {
+            out("TREE \(String(repeating: "  ", count: depth))\(n.name) (\(n.totalCount))")
+            printTree(n.children ?? [], depth + 1)
+        }
+    }
+    printTree(FolderTree.build(folders: summaries.map(\.folder)), 0)
+    guard ok else {
+        err("HIERARCHY ROUNDTRIP FAILED")
+        return exitFail
+    }
+    out("HIERARCHY ROUNDTRIP OK")
+    return exitOk
+}
+
 func probe() -> Int32 {
     let v = ProcessInfo.processInfo.operatingSystemVersionString
     #if arch(arm64)
@@ -240,6 +305,7 @@ func usage() -> Int32 {
           import    --in FILE.vtf [--vault PATH]     prints imported item titles
           inspect   --in FILE.vtf
           roundtrip --dir DIR                        create, add, export, import into a second vault
+          hierarchy --dir DIR                        nested folders + recovery codes survive export/import
           probe                                      FFI link + Secure Enclave / Touch ID availability
         Secrets: STRONGROOM_PASSWORD, STRONGROOM_SECRET_KEY, STRONGROOM_ITEM_PASSWORD (env).
         """)
@@ -258,6 +324,7 @@ func execute(_ argv: [String]) -> Int32 {
         case "import": return try importFile(a)
         case "inspect": return try inspect(a)
         case "roundtrip": return try roundTrip(a)
+        case "hierarchy": return try hierarchyRoundTrip(a)
         case "probe": return probe()
         default: return usage()
         }

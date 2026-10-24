@@ -23,12 +23,39 @@ struct StrongroomApp: App {
                 Button("Import VTF…") { delegate.model.beginImport() }
                     .keyboardShortcut("i", modifiers: [.command, .shift])
                     .disabled(!delegate.model.isUnlocked)
+                Button("Import with This Mac's Key…") { Task { await delegate.model.importWithThisMacsKey() } }
+                    .disabled(!delegate.model.isUnlocked)
+                Button("Import from Another Password Manager (CSV)…") { delegate.model.sheet = .csvImport }
+                    .disabled(!delegate.model.isUnlocked)
                 Button("Export VTF…") { delegate.model.beginExport() }
                     .keyboardShortcut("e", modifiers: [.command, .shift])
+                    .disabled(!delegate.model.isUnlocked)
+                Button("Back Up Vault…") { Task { await delegate.model.backup() } }
+                    .keyboardShortcut("b", modifiers: [.command, .shift])
+                    .disabled(!delegate.model.isUnlocked)
+                Button("Devices and Pairing…") { delegate.model.sheet = .devices }
+                    .disabled(!delegate.model.isUnlocked)
+                Divider()
+                Button("New Folder…") { delegate.model.sheet = .folderName(.create(parent: delegate.model.currentFolder)) }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
                     .disabled(!delegate.model.isUnlocked)
                 Divider()
                 Button("Lock Vault") { delegate.model.lock() }
                     .keyboardShortcut("l", modifiers: [.command, .shift])
+                    .disabled(!delegate.model.isUnlocked)
+            }
+            CommandMenu("Vault") {
+                Button("All Items") { delegate.model.selectFolder([]) }
+                    .keyboardShortcut("1", modifiers: [.command])
+                    .disabled(!delegate.model.isUnlocked)
+                Button("Favourites") { delegate.model.sidebar = .favourites }
+                    .keyboardShortcut("2", modifiers: [.command])
+                    .disabled(!delegate.model.isUnlocked)
+                Button("Password Health") { delegate.model.sidebar = .health }
+                    .keyboardShortcut("3", modifiers: [.command])
+                    .disabled(!delegate.model.isUnlocked)
+                Button("Trash") { delegate.model.sidebar = .trash }
+                    .keyboardShortcut("4", modifiers: [.command])
                     .disabled(!delegate.model.isUnlocked)
             }
             CommandGroup(after: .windowArrangement) {

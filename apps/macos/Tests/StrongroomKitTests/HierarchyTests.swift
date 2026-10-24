@@ -285,6 +285,23 @@ import Testing
         #expect(d.fields.allSatisfy { SensitiveField.classify($0.name) == .other || $0.concealed })
     }
 
+    @Test func seedWordPositionsSurviveEmptyWords() throws {
+        var d = ItemDraft(template: try #require(ItemTemplate.named("crypto-wallet")))
+        d.title = "w"
+        d.fields[d.fields.firstIndex { $0.name == "Seed word 2" }!].value = "abandon"
+        d.fields[d.fields.firstIndex { $0.name == "Seed word 5" }!].value = "zoo"
+        let input = d.toInput()
+        #expect(input.fields.map(\.name) == ["Seed word 2", "Seed word 5"])
+        #expect(SeedPhrase.words(input.fields) == ["", "abandon", "", "", "zoo"])
+        var again = ItemDraft(input)
+        again.ensureTemplateFields()
+        #expect(again.seedWordCount == 12)
+        #expect(again.fields.first { $0.name == "Seed word 5" }?.value == "zoo")
+        #expect(again.toInput() == input)
+        #expect(SeedPhrase.highestWordNumber(["Seed word 13"]) == 13)
+        #expect(SeedPhrase.words([]).isEmpty)
+    }
+
     @Test func siblingAccount() throws {
         var d = ItemDraft(template: try #require(ItemTemplate.named("social")))
         d.title = "@personal"

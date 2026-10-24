@@ -233,3 +233,26 @@ public struct FieldGroups: Equatable, Sendable {
         return g
     }
 }
+
+/// Seed-phrase words are stored as `Seed word N` fields; empty words are not
+/// stored, so positions come from the numbers, not from the field order.
+public enum SeedPhrase {
+    public static let standardLengths = [12, 15, 18, 21, 24]
+
+    public static func highestWordNumber(_ names: [String]) -> Int {
+        names.compactMap { n -> Int? in
+            if case let .seedWord(num) = SensitiveField.classify(n) { return num }
+            return nil
+        }.max() ?? 0
+    }
+
+    /// Words 1...highest, with "" for positions that are not stored.
+    public static func words(_ fields: [CustomField]) -> [String] {
+        var byNumber: [Int: String] = [:]
+        for f in fields {
+            if case let .seedWord(n) = SensitiveField.classify(f.name), n >= 1, n <= 48 { byNumber[n] = f.value }
+        }
+        guard let top = byNumber.keys.max() else { return [] }
+        return (1 ... top).map { byNumber[$0] ?? "" }
+    }
+}

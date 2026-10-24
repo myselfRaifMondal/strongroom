@@ -1,37 +1,41 @@
 import StrongroomKit
 import SwiftUI
 
+/// Item ids on the drag pasteboard carry a prefix so drops from other apps
+/// (plain text) are ignored. Ids are not secret.
+enum DragPayload {
+    static let prefix = "strongroom-item:"
+    static func make(_ id: String) -> String { prefix + id }
+    static func itemID(_ s: String) -> String? {
+        guard s.hasPrefix(prefix) else { return nil }
+        let id = String(s.dropFirst(prefix.count))
+        return id.isEmpty ? nil : id
+    }
+}
+
 struct VaultView: View {
     @EnvironmentObject var model: AppModel
     @State private var showGenerator = false
 
     var body: some View {
         NavigationSplitView {
-            List(model.items, id: \.id, selection: $model.selection) { item in
-                ItemRow(item: item).tag(item.id)
-            }
-            .overlay {
-                if model.items.isEmpty {
-                    ContentUnavailableView(model.query.isEmpty ? "No items yet" : "No matches",
-                                           systemImage: model.query.isEmpty ? "tray" : "magnifyingglass")
-                }
-            }
-            .searchable(text: $model.query, placement: .sidebar, prompt: "Search")
-            .navigationSplitViewColumnWidth(min: 240, ideal: 280)
+            SidebarView()
+                .navigationSplitViewColumnWidth(min: 200, ideal: 230)
+        } content: {
+            ContentColumn()
+                .navigationSplitViewColumnWidth(min: 260, ideal: 300)
         } detail: {
-            if let id = model.selection {
-                ItemDetailView(itemId: id)
-                    .id("\(id)-\(model.revision)")
-            } else {
-                ContentUnavailableView("Select an item", systemImage: "key.horizontal")
-            }
+            DetailColumn()
         }
+        .searchable(text: $model.query, placement: .toolbar, prompt: "Search")
         .toolbar {
             ToolbarItemGroup {
                 Menu {
+                    Button { model.requestNewItem() } label: { Label("Choose a Template…", systemImage: "square.grid.2x2") }
+                    Divider()
                     ForEach(ItemKind.allCases) { kind in
                         Button { model.requestNewItem(kind: kind) } label: {
-                            Label(kind.displayName, systemImage: kind.symbolName)
+                            Label("Blank \(kind.displayName)", systemImage: kind.symbolName)
                         }
                     }
                 } label: {
@@ -39,10 +43,17 @@ struct VaultView: View {
                 } primaryAction: {
                     model.requestNewItem()
                 }
+                .help("New item (choose a template)")
                 Button { showGenerator = true } label: { Label("Generator", systemImage: "wand.and.stars") }
                 Menu {
                     Button("Import VTF…") { model.beginImport() }
+                    Button("Import with This Mac's Key…") { Task { await model.importWithThisMacsKey() } }
+                    Button("Import from Another Password Manager (CSV)…") { model.sheet = .csvImport }
+                    Divider()
                     Button("Export VTF…") { model.beginExport() }
+                    Button("Back Up Vault…") { Task { await model.backup() } }
+                    Divider()
+                    Button("Devices and Pairing…") { model.sheet = .devices }
                 } label: {
                     Label("Transfer", systemImage: "arrow.up.arrow.down.square")
                 }
@@ -54,6 +65,19 @@ struct VaultView: View {
         }
         .sheet(item: $model.transfer) { req in
             TransferSheet(request: req)
+        }
+        .sheet(item: $model.templatePicker) { req in
+            TemplatePickerView(folder: req.folder)
+        }
+        .sheet(item: $model.sheet) { req in
+            switch req {
+            case let .history(id): HistorySheet(itemId: id)
+            case .csvImport: CSVImportSheet()
+            case .devices: DevicesSheet()
+            case let .folderName(mode): FolderNameSheet(mode: mode)
+            case let .moveItems(ids): MoveItemsSheet(itemIds: ids)
+            case let .moveFolder(path): MoveFolderSheet(path: path)
+            }
         }
         .sheet(isPresented: $showGenerator) {
             VStack(alignment: .leading) {
@@ -79,21 +103,171 @@ struct VaultView: View {
     }
 }
 
+// MARK: middle column
+
+struct ContentColumn: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        switch model.sidebar {
+        case .health: HealthView()
+        case .trash: TrashView()
+        default: ItemListView()
+        }
+    }
+}
+
+struct ItemListView: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        List(model.items, id: \.id, selection: $model.selection) { item in
+            ItemRow(item: item, weak: model.weakIDs.contains(item.id), reused: model.reusedIDs.contains(item.id),
+                    showFolder: showFolder(item))
+                .tag(item.id)
+                .draggable(DragPayload.make(item.id))
+                .contextMenu { ItemContextMenu(itemId: item.id) }
+        }
+        .overlay {
+            if model.items.isEmpty {
+                if model.query.isEmpty {
+                    ContentUnavailableView {
+                        Label(emptyTitle, systemImage: "tray")
+                    } actions: {
+                        Button("Add an Item") { model.requestNewItem() }
+                    }
+                } else {
+                    ContentUnavailableView.search(text: model.query)
+                }
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                ScopeHeader()
+                Divider()
+            }
+            .background(.bar)
+        }
+        .navigationTitle(scopeTitle)
+    }
+
+    /// Items in sub-folders show where they live.
+    private func showFolder(_ item: ItemSummary) -> Bool {
+        guard let path = model.sidebar.folderPath else { return model.sidebar != .all || !model.query.isEmpty }
+        return !FolderPath.isDirectlyIn(item.folder, path)
+    }
+
+    private var emptyTitle: String {
+        switch model.sidebar {
+        case .favourites: return "No favourites yet"
+        case .folder: return "This folder is empty"
+        case .tag: return "No items with this tag"
+        default: return "No items yet"
+        }
+    }
+
+    private var scopeTitle: String {
+        switch model.sidebar {
+        case .all: return "All Items"
+        case .favourites: return "Favourites"
+        case let .folder(id): return FolderPath.components(id).last ?? "Folder"
+        case let .tag(t): return "#\(t)"
+        case .health: return "Password Health"
+        case .trash: return "Trash"
+        }
+    }
+}
+
+/// Breadcrumb and count above the item list.
+struct ScopeHeader: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        HStack(spacing: 6) {
+            switch model.sidebar {
+            case .folder:
+                Breadcrumb(path: model.currentFolder)
+            case .favourites:
+                Label("Favourites", systemImage: "star.fill").font(.callout.weight(.medium))
+            case let .tag(t):
+                Label("#\(t)", systemImage: "tag").font(.callout.weight(.medium))
+            default:
+                Breadcrumb(path: [])
+            }
+            Spacer(minLength: 4)
+            Text("\(model.items.count)").font(.caption).monospacedDigit().foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+    }
+}
+
+/// "All Items › Social › Instagram"; every segment is a link.
+struct Breadcrumb: View {
+    @EnvironmentObject var model: AppModel
+    let path: [String]
+    var font: Font = .callout
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            segments(path.indices.map { $0 })
+            // Not enough room: root, …, last two.
+            segments(path.count > 2 ? [path.count - 2, path.count - 1] : path.indices.map { $0 }, elided: path.count > 2)
+        }
+        .font(font)
+    }
+
+    private func segments(_ indices: [Int], elided: Bool = false) -> some View {
+        HStack(spacing: 3) {
+            Button("All Items") { model.selectFolder([]) }
+                .buttonStyle(.link)
+                .foregroundStyle(path.isEmpty ? Color.primary : Color.secondary)
+            if elided {
+                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                Text("…").foregroundStyle(.secondary)
+            }
+            ForEach(indices, id: \.self) { i in
+                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                Button(path[i]) { model.selectFolder(Array(path.prefix(i + 1))) }
+                    .buttonStyle(.link)
+                    .foregroundStyle(i == path.count - 1 ? Color.primary : Color.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+}
+
 struct ItemRow: View {
     let item: ItemSummary
+    var weak = false
+    var reused = false
+    var showFolder = false
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: item.kind.symbolName)
+            Image(systemName: ItemPresentation.symbol(kind: item.kind, tags: item.tags))
                 .frame(width: 22)
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.title).lineLimit(1)
-                if let sub = item.subtitle, !sub.isEmpty {
+                HStack(spacing: 4) {
+                    Text(item.title).lineLimit(1)
+                    if ReservedTags.isFavourite(item.tags) {
+                        Image(systemName: "star.fill").font(.caption2).foregroundStyle(.yellow)
+                            .accessibilityLabel("Favourite")
+                    }
+                }
+                let sub = [item.subtitle, showFolder ? FolderPath.components(item.folder).joined(separator: " › ") : nil]
+                    .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+                if !sub.isEmpty {
                     Text(sub).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             Spacer()
+            if weak || reused {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.orange)
+                    .help(reused ? "Password reused elsewhere" : "Weak password")
+            }
             if item.hasTotp {
                 Image(systemName: "clock.badge.checkmark").foregroundStyle(.secondary).help("Has a one-time code")
             }
@@ -102,143 +276,50 @@ struct ItemRow: View {
     }
 }
 
-// MARK: detail
-
-struct ItemDetailView: View {
+struct ItemContextMenu: View {
     @EnvironmentObject var model: AppModel
     let itemId: String
-    @State private var item: Item?
-    @State private var confirmTrash = false
 
     var body: some View {
-        ScrollView {
-            if let item {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(spacing: 12) {
-                        Image(systemName: item.data.kind.symbolName).font(.title).foregroundStyle(.tint)
-                        VStack(alignment: .leading) {
-                            Text(item.data.title).font(.title2.bold())
-                            Text(item.data.kind.displayName).font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 10) {
-                            if let u = item.data.username { FieldRow(label: "Username", value: u, concealed: false) }
-                            if let p = item.data.password { FieldRow(label: item.data.kind.passwordLabel, value: p, concealed: true) }
-                            if item.data.totp != nil { TOTPRow(itemId: item.id) }
-                            ForEach(item.data.urls, id: \.self) { FieldRow(label: "URL", value: $0, concealed: false) }
-                            ForEach(Array(item.data.fields.enumerated()), id: \.offset) { _, f in
-                                FieldRow(label: f.name, value: f.value, concealed: f.concealed)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(6)
-                    }
-                    if let notes = item.data.notes {
-                        GroupBox("Notes") {
-                            Text(notes).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(6)
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        if let folder = item.data.folder { Text("Folder: \(folder)") }
-                        if !item.data.tags.isEmpty { Text("Tags: \(item.data.tags.joined(separator: ", "))") }
-                        if item.data.travelSafe { Text("Travel safe") }
-                        Text("Modified \(Date(timeIntervalSince1970: TimeInterval(item.modifiedAt)).formatted())")
-                        Text("Created \(Date(timeIntervalSince1970: TimeInterval(item.createdAt)).formatted())")
-                    }
-                    .font(.caption).foregroundStyle(.secondary)
+        if let s = model.summary(itemId) {
+            Button(model.isFavourite(itemId) ? "Remove from Favourites" : "Add to Favourites") { model.toggleFavourite(itemId) }
+            Button("Edit…") { model.requestEdit(itemId) }
+            if ItemPresentation.isAccount(kind: s.kind, tags: s.tags) {
+                Button("Add Another Account for \(ItemPresentation.serviceName(folder: s.folder, urls: s.urls, title: s.title))…") {
+                    model.requestSibling(of: itemId)
                 }
-                .padding(20)
-            } else {
-                ProgressView().padding()
             }
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                if let item, item.data.password != nil {
-                    Button {
-                        AutoType.confirmAndType(item.data.password ?? "", itemTitle: item.data.title, target: AutoType.lastExternalTarget())
-                    } label: {
-                        Label("Auto-Type…", systemImage: "keyboard")
-                    }
-                    .help("Type the password into the app you used last (asks first)")
-                }
-                Button { model.requestEdit(itemId) } label: { Label("Edit", systemImage: "pencil") }
-                Button(role: .destructive) { confirmTrash = true } label: { Label("Move to Trash", systemImage: "trash") }
-            }
-        }
-        .confirmationDialog("Move this item to the trash?", isPresented: $confirmTrash) {
+            Button("Move to Folder…") { model.sheet = .moveItems([itemId]) }
+            Button("History…") { model.sheet = .history(itemId) }
+            Divider()
             Button("Move to Trash", role: .destructive) { model.trash(itemId) }
         }
-        .task(id: itemId) { item = model.item(itemId) }
     }
 }
 
-struct FieldRow: View {
+// MARK: detail column
+
+struct DetailColumn: View {
     @EnvironmentObject var model: AppModel
-    let label: String
-    let value: String
-    let concealed: Bool
-    @State private var revealed = false
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label).foregroundStyle(.secondary).frame(width: 110, alignment: .trailing)
-            Group {
-                if concealed && !revealed {
-                    Text(String(repeating: "•", count: min(max(value.count, 8), 24)))
-                } else {
-                    Text(value).textSelection(.enabled)
-                }
-            }
-            .font(.system(.body, design: concealed ? .monospaced : .default))
-            .lineLimit(concealed && !revealed ? 1 : nil)
-            Spacer()
-            if concealed {
-                Button { revealed.toggle() } label: { Image(systemName: revealed ? "eye.slash" : "eye") }
-                    .buttonStyle(.borderless).help(revealed ? "Hide" : "Reveal")
-            }
-            Button { model.copy(value, label: label) } label: { Image(systemName: "doc.on.doc") }
-                .buttonStyle(.borderless).help("Copy (clears in \(Int(SecureClipboard.defaultClearAfter)) s)")
-        }
-    }
-}
-
-/// Live TOTP: recomputed every second from the core.
-struct TOTPRow: View {
-    @EnvironmentObject var model: AppModel
-    let itemId: String
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { _ in
-            let code = model.totp(itemId)
-            HStack(alignment: .firstTextBaseline) {
-                Text("One-time code").foregroundStyle(.secondary).frame(width: 110, alignment: .trailing)
-                if let code {
-                    Text(Self.grouped(code.code)).font(.system(.title3, design: .monospaced).bold())
-                    ZStack {
-                        Circle().stroke(.quaternary, lineWidth: 3)
-                        Circle()
-                            .trim(from: 0, to: CGFloat(code.secondsRemaining) / CGFloat(max(code.period, 1)))
-                            .stroke(code.secondsRemaining <= 5 ? Color.red : Color.accentColor, lineWidth: 3)
-                            .rotationEffect(.degrees(-90))
-                        Text("\(code.secondsRemaining)").font(.system(size: 9)).monospacedDigit()
-                    }
-                    .frame(width: 22, height: 22)
-                    Spacer()
-                    Button { model.copy(code.code, label: "One-time code") } label: { Image(systemName: "doc.on.doc") }
-                        .buttonStyle(.borderless)
-                } else {
-                    Text("Invalid TOTP secret").foregroundStyle(.red)
-                    Spacer()
-                }
+        if let id = model.selection, model.summary(id) != nil {
+            ItemDetailView(itemId: id)
+                .id("\(id)-\(model.revision)")
+        } else {
+            switch model.sidebar {
+            case .all:
+                FolderOverviewView(path: [])
+            case let .folder(id):
+                FolderOverviewView(path: FolderPath.components(id))
+            case .health:
+                ContentUnavailableView("Select an item to review it", systemImage: "checkmark.shield")
+            case .trash:
+                ContentUnavailableView("Trashed items stay for 180 days", systemImage: "trash",
+                                       description: Text("Restore them from the list, or let them expire."))
+            default:
+                ContentUnavailableView("Select an item", systemImage: "key.horizontal")
             }
         }
-    }
-
-    static func grouped(_ code: String) -> String {
-        guard code.count == 6 else { return code }
-        return "\(code.prefix(3)) \(code.suffix(3))"
     }
 }
