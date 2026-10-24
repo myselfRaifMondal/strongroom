@@ -81,7 +81,7 @@ struct VaultView: View {
                 } label: {
                     Label("Transfer", systemImage: "arrow.up.arrow.down.square")
                 }
-                Button { model.lock() } label: { Label("Lock", systemImage: "lock.fill") }
+                Button { model.requestLock() } label: { Label("Lock", systemImage: "lock.fill") }
             }
         }
         .sheet(item: $model.editor) { req in

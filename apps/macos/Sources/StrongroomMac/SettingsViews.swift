@@ -1,3 +1,4 @@
+import ServiceManagement
 import StrongroomKit
 import SwiftUI
 
@@ -106,6 +107,7 @@ struct SettingsView: View {
     @State private var showSecondVault = false
     @State private var showDevices = false
     @State private var pendingCount = 0
+    @StateObject private var loginItem = LoginItem()
 
     var body: some View {
         Form {
@@ -149,6 +151,28 @@ struct SettingsView: View {
                 }
             }
             RotationSettingsSection(reminders: model.reminders)
+            Section("Locking") {
+                Toggle("Lock when the screen locks or the screen saver starts", isOn: $model.lockSettings.lockOnScreenLock)
+                Picker("Lock after inactivity", selection: $model.lockSettings.idleLock) {
+                    ForEach(IdleLockInterval.allCases) { Text($0.label).tag($0) }
+                }
+                Text("Strongroom always locks before the Mac sleeps, on fast user switching, at logout and when it quits. Inactivity counts from your last use of Strongroom. While unlocked in the background, the vault key stays in this app's memory.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Section("Background") {
+                Toggle("Open at login", isOn: Binding(get: { loginItem.isOn }, set: { loginItem.set($0) }))
+                LabeledContent("Status", value: loginItem.statusText)
+                if loginItem.status == .requiresApproval {
+                    Text("macOS needs your approval: turn Strongroom on in System Settings › General › Login Items.")
+                        .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                    Button("Open Login Items Settings") { loginItem.openLoginItemsSettings() }
+                }
+                if let error = loginItem.lastError {
+                    Text(error).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                }
+                Text("Closing the window keeps Strongroom running in the menu bar, so ⌥⌘\\ always works. Quit it from the menu-bar icon.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             Section("Quick access") {
                 LabeledContent("Global shortcut", value: "⌥⌘\\")
                 if !model.hotKeyRegistered {
@@ -174,6 +198,15 @@ struct SettingsView: View {
         .onAppear {
             trusted = AutoType.isTrusted
             model.refreshTravelMode()
+            loginItem.refresh()
+        }
+        .onChange(of: model.isUnlocked) {
+            // Locked: close anything that works on the open vault.
+            if !model.isUnlocked {
+                showSecondVault = false
+                showDevices = false
+                confirmTravel = nil
+            }
         }
         .confirmationDialog(confirmTravel == true ? "Turn on travel mode?" : "Turn off travel mode?",
                             isPresented: Binding(get: { confirmTravel != nil }, set: { if !$0 { confirmTravel = nil } })) {

@@ -84,6 +84,9 @@ enum AutoType {
     }
 
     private static var lastExternalApp: NSRunningApplication?
+    /// Bumped on every lock: a confirmation still open when the vault locked
+    /// never types.
+    static var lockGeneration = 0
     private static var observer: NSObjectProtocol?
 
     static var isTrusted: Bool { AXIsProcessTrusted() }
@@ -167,7 +170,8 @@ enum AutoType {
         alert.addButton(withTitle: "Cancel")
         alert.buttons.last?.keyEquivalent = "\u{1b}"
         WindowPrivacy.protect(alert.window)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let generation = lockGeneration
+        guard alert.runModal() == .alertFirstButtonReturn, generation == lockGeneration else { return }
 
         beforeTyping?()
         Task { @MainActor in

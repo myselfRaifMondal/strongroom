@@ -48,6 +48,11 @@ native app on top of it.
   device pairing by QR code, travel mode and a decoy vault.
 - Clipboard auto-clear, screen-capture exclusion, confirmed auto-type and a
   global quick-access overlay on desktop.
+- macOS: keeps running in the menu bar after its window closes (optionally
+  opened at login), so the quick-access shortcut (⌥⌘\) always works. It
+  locks before the Mac sleeps, when the screen locks, on user switching and
+  optionally after inactivity; the shortcut then asks for Touch ID or the
+  master password and Secret Key.
 - No network access at all (an opt-in breach check is planned and will be
   off by default).
 
@@ -77,8 +82,11 @@ Key, your vault cannot be opened by anyone, including the developers.
 - **No independent security audit** yet.
 - **macOS:** the app is ad-hoc signed and not notarized, so other Macs show
   a Gatekeeper warning on first launch, and weekly reminder notifications are
-  unavailable (reminders appear as a banner on unlock instead). Built for
-  macOS 14+, but only run on macOS 26.
+  unavailable (reminders appear as a banner on unlock instead). "Open at
+  login" may need approval in System Settings › Login Items and has not been
+  verified for the ad-hoc build ([OQ-M10](docs/OPEN-QUESTIONS.md)). While it
+  runs unlocked in the background, the vault key stays in the app's memory.
+  Built for macOS 14+, but only run on macOS 26.
 - **Windows:** built and tested only on GitHub Actions runners. Windows Hello
   and the TPM-backed key have not been tested on real hardware, and the app
   enforces the Hello prompt rather than the TPM ([OQ-W1](docs/OPEN-QUESTIONS.md)).

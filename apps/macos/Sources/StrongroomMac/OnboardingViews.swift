@@ -184,7 +184,16 @@ struct UnlockView: View {
         .padding(32)
         .task {
             model.refreshGate()
-            if model.touchIDAvailableNow { await model.unlockWithTouchID() }
+            // After an automatic lock (sleep, screen lock, idle) the window may
+            // still be on screen: wait for the user rather than prompting
+            // while nobody is there.
+            if model.touchIDAvailableNow && !model.lockedAutomatically { await model.unlockWithTouchID() }
         }
+        .onChange(of: model.touchIDPromptRequest) {
+            // The user asked for the window (menu bar, overlay, Dock).
+            model.refreshGate()
+            if model.touchIDAvailableNow { Task { await model.unlockWithTouchID() } }
+        }
+        .onChange(of: model.phase) { password = ""; secretKey = "" }
     }
 }

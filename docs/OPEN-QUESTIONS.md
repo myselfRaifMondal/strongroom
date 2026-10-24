@@ -246,6 +246,55 @@ Default, all app-side (no FFI, UDL or format change):
   unlock banner is the only reminder and Settings says so; a Developer ID
   signed build is expected to get the normal prompt (not verified).
 
+## OQ-M10 macOS: background (menu-bar) mode and lock triggers
+Default (app-side only; no FFI, UDL or format change):
+- Closing the last window does not quit. A menu-bar item (a vault-door
+  template image drawn in code; solid when locked, outline when unlocked;
+  menu header "Strongroom — Locked/Unlocked") offers Open Strongroom, Quick
+  Access, Lock Now, Settings and Quit. With no Strongroom window open the app
+  switches to the `.accessory` activation policy (no Dock icon) and back to
+  `.regular` when a window opens. The Carbon hotkey (⌥⌘\) is registered once
+  at launch and kept for the life of the process.
+- Lock triggers, all through one `LockCoordinator`
+  (`StrongroomKit/LockPolicy.swift`): always before system sleep
+  (`willSleep`, so the lock happens before sleep, not on wake), on session
+  resign / fast user switch, on logout/shutdown (`willPowerOff`) and on quit;
+  screen lock (`com.apple.screenIsLocked`) and screen-saver start
+  (`com.apple.screensaver.didstart`) by default, with a Settings toggle; idle
+  lock off by default, choosable as 5/15/30/60 minutes or 4 hours since the
+  last Strongroom interaction (events delivered to the app's windows, the
+  overlay, the hotkey and the menu; checked every 15 s). A lock drops the
+  vault object, items, health/reuse map, ranking and strength cache, closes
+  the overlay, sheets and modal alerts/file panels (an auto-type confirmation
+  open at that moment never types), and clears a pending clipboard secret at
+  once. An unlock still running when a lock event arrives (Argon2id or Touch
+  ID during sleep) is discarded.
+- After a lock the hotkey opens the overlay in an unlock state with no item
+  data: Touch ID first when a device key exists and `UnlockGate` allows it
+  (all its rules apply unchanged), otherwise master password + Secret Key;
+  success goes straight into quick search. After an automatic lock the main
+  window does not prompt for Touch ID by itself; "Open Strongroom" does.
+- While unlocked in the background the vault key stays in process memory
+  (inside the Rust core), as with other password managers that stay unlocked
+  until a lock event. See THREAT-MODEL A2 and residual risks 2, 11 and 12:
+  malware running as the user while the vault is unlocked can read it, and
+  staying unlocked in the background lengthens that window. The idle lock is
+  the mitigation for users who want a shorter one.
+- "Open at login" uses `SMAppService.mainApp`. `.requiresApproval` is shown
+  with a button that opens System Settings › General › Login Items; a failed
+  `register()` shows the error. For the ad-hoc signed test copy (launched
+  directly, not from /Applications) the status read back as `.notFound`
+  before registering. Registration itself was not attempted in testing
+  (it changes the user's login items); whether macOS accepts an ad-hoc
+  signed, non-notarized app as a login item needs a manual check. At login
+  the app opens its (locked) main window; closing it leaves the menu-bar item.
+- Not verified by running: real sleep/wake, a real screen lock, Touch ID in
+  the overlay, the login item. The lock path was run with the
+  `com.apple.screensaver.didstart` distributed notification and, for sleep,
+  through the same coordinator call from a debug hook
+  (`STRONGROOM_DEBUG_HOOKS=1`; harmless commands only: lock, show/hide,
+  open/close windows, report state, quit).
+
 ## OQ-12 SQLCipher `cipher_memory_security` off on all platforms (owner-accepted)
 Decision (owner, 2026-10-23): off everywhere for v1, documented as a residual
 risk (THREAT-MODEL 4.11). With it on, SQLCipher mlocks every SQLite

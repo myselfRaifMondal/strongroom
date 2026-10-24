@@ -69,6 +69,18 @@ final class AppModel: ObservableObject {
     @Published var sheet: SheetRequest?
     @Published var templatePicker: TemplatePickerRequest?
     @Published var hotKeyRegistered = false
+    /// Set by an automatic lock (sleep, screen lock, idle…): the unlock window
+    /// then waits for the user instead of prompting for Touch ID by itself.
+    @Published var lockedAutomatically = false
+    /// Settings › Locking (UserDefaults; saved and applied by the delegate).
+    @Published var lockSettings = LockSettings.load()
+    /// Bumped to ask a visible unlock screen to offer Touch ID now.
+    @Published var touchIDPromptRequest = 0
+    /// Routes "Lock" buttons through the lock coordinator (overlay, sheets,
+    /// clipboard). Set by the app delegate.
+    var lockRequestHandler: (() -> Void)?
+    /// Called after every successful unlock (idle timer restart, menu icon).
+    var didUnlockHandler: (() -> Void)?
     /// Security Ranking, computed in memory while unlocked; cleared on lock.
     @Published private(set) var ranking: RankingResult = .empty
     /// Rotation and organize settings (UserDefaults, not secret).
@@ -205,57 +217,75 @@ final class AppModel: ObservableObject {
     /// Always one `unlock_first_matching` over every candidate path (main
     /// vault and the optional second vault, present or not), so timing and
     /// errors are the same whichever password was typed.
-    func unlock(password: String, secretKey: String) async {
-        guard let dir else { return }
+    @discardableResult
+    func unlock(password: String, secretKey: String, inline: Bool = false) async -> String? {
+        guard let dir, !busy else { return nil }
         busy = true
         defer { busy = false }
         let paths = dir.unlockCandidatePaths.map(\.path)
         let sk = secretKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let epoch = lockEpoch
         do {
             let v = try await CoreThread.run {
                 try Vault.unlockFirstMatching(paths: paths, password: password, secretKey: sk, now: Clock.now())
             }
-            vault = v
             if let du = deviceUnlock {
                 let vaultRef = v
                 try? await CoreThread.run { try du.recordPasswordUnlock(vault: vaultRef) }
             }
+            // A lock event (sleep, screen lock…) arrived while Argon2id ran:
+            // stay locked.
+            guard epoch == lockEpoch else { v.lock(); return nil }
+            vault = v
             didUnlock()
+            return nil
         } catch {
-            errorMessage = CoreErrors.describe(error)
+            let message = CoreErrors.describe(error)
+            if !inline { errorMessage = message }
+            return message
         }
     }
 
-    func unlockWithTouchID() async {
-        guard dir != nil, let du = deviceUnlock else { return }
+    /// Touch ID through the Secure Enclave key, only when `UnlockGate` allows
+    /// it. `inline`: return the error text instead of raising the main
+    /// window's alert (the quick-access overlay shows it itself).
+    @discardableResult
+    func unlockWithTouchID(inline: Bool = false) async -> String? {
+        guard dir != nil, let du = deviceUnlock, !busy else { return nil }
         refreshGate()
-        guard gateReason == .notRequired else { return }
+        guard gateReason == .notRequired else { return nil }
         busy = true
         defer { busy = false }
         let path = du.enrolledVaultPath
+        let epoch = lockEpoch
         let outcome = try? await CoreThread.run { du.unlock(vaultPath: path, reason: "unlock your Strongroom vault") }
+        var message: String?
         switch outcome {
         case let .unlocked(v)?:
+            guard epoch == lockEpoch else { v.lock(); return nil }
             vault = v
             didUnlock()
         case let .failed(failure)?:
             switch failure {
             case .cancelled?: break
             case .keyInvalidated?:
-                errorMessage = "Touch ID can no longer unlock this vault (the fingerprints on this Mac changed). Enter your master password; Touch ID will be set up again."
+                message = "Touch ID can no longer unlock this vault (the fingerprints on this Mac changed). Enter your master password; Touch ID will be set up again."
             case .lockout?:
-                errorMessage = "Touch ID is locked out. Enter your master password."
+                message = "Touch ID is locked out. Enter your master password."
             default:
-                errorMessage = "Touch ID unlock failed."
+                message = "Touch ID unlock failed."
             }
             refreshGate()
         case nil:
-            errorMessage = "Touch ID unlock failed."
+            message = "Touch ID unlock failed."
         }
+        if let message, !inline { errorMessage = message }
+        return message
     }
 
     private func didUnlock() {
         phase = .unlocked
+        lockedAutomatically = false
         errorMessage = nil
         sidebar = .all
         // Items trashed more than 180 days ago are deleted for good.
@@ -267,8 +297,21 @@ final class AppModel: ObservableObject {
         rotation = RotationSettings.load()
         showRotationBanner = ranking.dueCount > 0 && !rotation.isSnoozed(now: Clock.now())
         rescheduleReminder()
+        didUnlockHandler?()
     }
 
+    /// Bumped by every lock event, so an unlock that finishes after one
+    /// (Argon2id or Touch ID still running when the Mac went to sleep) is
+    /// thrown away.
+    private var lockEpoch = 0
+
+    /// "Lock" button / menu: the full lock path (overlay, sheets, clipboard).
+    func requestLock() {
+        if let lockRequestHandler { lockRequestHandler() } else { lock() }
+    }
+
+    /// Drops the vault and every secret derived from it (items, health and
+    /// reuse map, ranking, strength cache, organize undo, open sheets).
     func lock() {
         guard vault != nil else { return }
         // The reminder carries only the count, computed now while unlocked.
@@ -292,6 +335,8 @@ final class AppModel: ObservableObject {
         transfer = nil
         sheet = nil
         templatePicker = nil
+        errorMessage = nil
+        infoMessage = nil
         query = ""
         SecureClipboard.shared.clearNow()
         if case .showSecretKey = phase {} else if phase == .unlocked { phase = .locked }
@@ -949,5 +994,15 @@ final class AppModel: ObservableObject {
         let count = ranking.dueCount
         let settings = rotation
         Task { await reminders.schedule(count: count, settings: settings) }
+    }
+}
+
+extension AppModel: LockableSession {
+    var isSessionUnlocked: Bool { vault != nil }
+
+    func lockSession(reason: LockEvent) {
+        lockEpoch += 1
+        if reason != .manual { lockedAutomatically = true }
+        lock()
     }
 }

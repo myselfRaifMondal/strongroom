@@ -172,3 +172,8 @@ A crafted `.vtf` or CSV file aimed at crashing or exploiting the importer.
     wipes its own key material. Decrypted database pages in SQLite's page
     cache may remain in freed memory of an unlocked app until reused.
     Owner-accepted for v1.
+12. **macOS stays unlocked in the background** (OQ-M10). With its windows
+    closed the app keeps running in the menu bar, and the vault stays open
+    in process memory until the Mac sleeps, the screen locks, the user
+    switches or logs out, the user locks it, or the optional idle lock
+    fires. This lengthens the time A2 applies.
