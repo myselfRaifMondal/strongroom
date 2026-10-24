@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Test APK only (app.strongroom.android.test); never part of the app APK. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Minimal login form for the autofill walkthrough. Exported so that
+             `adb shell am start` can open it; it lives in the test APK only. -->
+        <activity
+            android:name="app.strongroom.android.AutofillTestActivity"
+            android:exported="true"
+            android:label="Autofill test login"
+            android:theme="@android:style/Theme.Material.Light" />
+    </application>
+</manifest>

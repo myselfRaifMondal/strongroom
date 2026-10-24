@@ -8,7 +8,7 @@ import android.view.autofill.AutofillManager
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Card
-import androidx.compose.material3.MaterialTheme
+import app.strongroom.android.ui.StrongroomTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,7 +42,7 @@ class AutofillUnlockActivity : FragmentActivity() {
             return
         }
         setContent {
-            MaterialTheme {
+            StrongroomTheme {
                 var chosen by remember {
                     mutableStateOf(Session.lastVaultName?.takeIf { it in vaults } ?: vaults.singleOrNull())
                 }

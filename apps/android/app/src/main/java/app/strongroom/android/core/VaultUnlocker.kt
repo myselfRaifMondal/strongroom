@@ -85,6 +85,16 @@ class VaultUnlocker(context: Context, val name: String) {
         return passwordRequiredReason() == PasswordRequiredReason.TOO_MANY_BIOMETRIC_FAILURES
     }
 
+    /**
+     * The OS locked biometrics out. It does that on the attempt that would be
+     * the 5th failure and reports it as an error, not as a failed attempt, so
+     * the gate never saw that failure: record failures until the gate demands
+     * the password (at most [MAX_FAILURES]).
+     */
+    fun biometricLockedOut() {
+        repeat(MAX_FAILURES) { if (biometricFailure()) return }
+    }
+
     /** Must run within DeviceKey.AUTH_VALIDITY_SECONDS of a successful BiometricPrompt. */
     fun unlockWithDevice(): Vault {
         val key = deviceKey ?: throw IllegalStateException(DeviceKeySupport.UNSUPPORTED_MESSAGE)
@@ -96,5 +106,6 @@ class VaultUnlocker(context: Context, val name: String) {
 
     companion object {
         private const val TAG = "StrongroomUnlock"
+        const val MAX_FAILURES = 5
     }
 }

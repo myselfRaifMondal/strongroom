@@ -142,13 +142,15 @@ fun SecretField(
     label: String,
     tag: String,
     modifier: Modifier = Modifier,
+    singleLine: Boolean = true,
 ) {
     var visible by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
-        singleLine = true,
+        singleLine = singleLine,
+        minLines = if (singleLine) 1 else 3,
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
         trailingIcon = {

@@ -31,7 +31,7 @@ import uniffi.strongroom.generatePassphrase
 import uniffi.strongroom.generatePassword
 
 @Composable
-fun GeneratorScreen(nav: Nav) {
+fun GeneratorScreen(nav: Nav, forEditor: Boolean = false) {
     val app = LocalContext.current.applicationContext as StrongroomApp
     val scope = rememberCoroutineScope()
     val op = rememberOpState()
@@ -59,13 +59,14 @@ fun GeneratorScreen(nav: Nav) {
 
     ScreenScaffold(title = "Generator", onBack = { nav.pop() }) {
         Row {
-            FilterChip(selected = !passphrase, onClick = { passphrase = false }, label = { Text("Password") })
+            FilterChip(selected = !passphrase, onClick = { passphrase = false }, label = { Text("Password") },
+                modifier = Modifier.testTag("modePassword"))
             FilterChip(selected = passphrase, onClick = { passphrase = true }, label = { Text("Passphrase") },
                 modifier = Modifier.testTag("modePassphrase"))
         }
         if (!passphrase) {
             Text("Length: ${length.toInt()}")
-            Slider(length, { length = it }, valueRange = 8f..64f, steps = 55)
+            Slider(length, { length = it }, valueRange = 8f..64f, steps = 55, modifier = Modifier.testTag("genLength"))
             Toggle("Lowercase", lower, "genLower") { lower = it }
             Toggle("Uppercase", upper, "genUpper") { upper = it }
             Toggle("Digits", digits, "genDigits") { digits = it }
@@ -73,7 +74,7 @@ fun GeneratorScreen(nav: Nav) {
             Toggle("Avoid look-alike characters", avoidAmbiguous, "genAmbiguous") { avoidAmbiguous = it }
         } else {
             Text("Words: ${words.toInt()}")
-            Slider(words, { words = it }, valueRange = 3f..12f, steps = 8)
+            Slider(words, { words = it }, valueRange = 3f..12f, steps = 8, modifier = Modifier.testTag("genWords"))
             PlainField(separator, { separator = it.take(3) }, "Separator", "genSeparator")
             Toggle("Capitalize", capitalize, "genCapitalize") { capitalize = it }
             Toggle("Include a number", includeNumber, "genNumber") { includeNumber = it }
@@ -101,7 +102,19 @@ fun GeneratorScreen(nav: Nav) {
                 Text(result, fontFamily = FontFamily.Monospace, modifier = Modifier.padding16().testTag("generated"))
             }
             strength?.let { Text("Strength ${it.score}/4, ~${it.entropyBits.toInt()} bits") }
-            OutlinedButton(onClick = { app.clipboard.copy("generated password", result) }) { Text("Copy (clears in 25 s)") }
+            if (forEditor) {
+                Button(
+                    modifier = Modifier.testTag("useGenerated"),
+                    onClick = {
+                        nav.generatedForEditor = result
+                        nav.pop()
+                    },
+                ) { Text("Use this password") }
+            }
+            OutlinedButton(
+                onClick = { app.clipboard.copy("generated password", result) },
+                modifier = Modifier.testTag("copyGenerated"),
+            ) { Text("Copy (clears in 25 s)") }
         }
     }
 }

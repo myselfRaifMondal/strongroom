@@ -11,7 +11,11 @@ import kotlin.coroutines.resume
 
 sealed interface BiometricResult {
     data object Success : BiometricResult
-    data class Error(val message: String) : BiometricResult
+    data class Error(val message: String, val code: Int = 0) : BiometricResult {
+        /** The OS locked the sensor after too many rejected fingers/faces. */
+        val isLockout: Boolean
+            get() = code == BiometricPrompt.ERROR_LOCKOUT || code == BiometricPrompt.ERROR_LOCKOUT_PERMANENT
+    }
 }
 
 object Biometrics {
@@ -36,7 +40,7 @@ object Biometrics {
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                if (cont.isActive) cont.resume(BiometricResult.Error(errString.toString()))
+                if (cont.isActive) cont.resume(BiometricResult.Error(errString.toString(), errorCode))
             }
 
             override fun onAuthenticationFailed() {

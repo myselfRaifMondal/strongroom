@@ -18,9 +18,14 @@
         android:theme="@style/Theme.Strongroom"
         tools:targetApi="35">
 
+        <!-- configChanges: rotation, dark mode, keyboard and font changes are
+             handled by Compose in place. Recreating the activity would drop the
+             in-memory navigation and unsaved drafts (secrets are deliberately
+             never written to a saved-instance Bundle). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -34,6 +39,7 @@
             android:name=".autofill.AutofillUnlockActivity"
             android:exported="false"
             android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection"
             android:theme="@style/Theme.Strongroom" />
 
         <service
