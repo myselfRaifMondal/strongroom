@@ -231,6 +231,10 @@ fun UnlockContent(vaultName: String, onBack: (() -> Unit)?, onUnlocked: () -> Un
                             val after = core { unlocker.passwordRequiredReason(justAuthenticated = true) }
                             if (after != PasswordRequiredReason.NOT_REQUIRED) {
                                 reason = after
+                                // An enrollment change just deleted the device key: offer to
+                                // turn biometric unlock on again with the password unlock.
+                                enableBiometric = DeviceKeySupport.supported && biometricHardware &&
+                                    !unlocker.deviceUnlockEnabled()
                                 throw IllegalStateException(after.explanation())
                             }
                             val vault = core { unlocker.unlockWithDevice() }
