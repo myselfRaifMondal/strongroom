@@ -121,7 +121,7 @@ jobs:
       # compared byte-for-byte (the repo has no .gitattributes).
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "8.0.x"
       - uses: actions/download-artifact@v4
