@@ -385,4 +385,23 @@ mod tests {
         assert_eq!(i[0].title, "www.example.org");
         assert!(items(CsvSource::Chrome, "foo,bar\n1,2\n").is_err());
     }
+
+    /// Apple Passwords (macOS 15+, File › Export All Passwords) writes
+    /// Title,URL,Username,Password,Notes,OTPAuth, which the 1Password
+    /// column mapping reads in full, including the TOTP secret.
+    #[test]
+    fn apple_passwords_export_via_onepassword_mapping() {
+        let apple = "Title,URL,Username,Password,Notes,OTPAuth\n\
+                     Instagram (personal),https://www.instagram.com/,me@example.com,pw4,,otpauth://totp/Instagram:me?secret=JBSWY3DPEHPK3PXP&issuer=Instagram\n\
+                     Example,https://example.com/,alice,pw5,a note,\n";
+        let i = items(CsvSource::OnePassword, apple).unwrap();
+        assert_eq!(i.len(), 2);
+        assert_eq!(i[0].title, "Instagram (personal)");
+        assert_eq!(i[0].urls, ["https://www.instagram.com/"]);
+        assert_eq!(i[0].username.as_deref(), Some("me@example.com"));
+        assert_eq!(i[0].password.as_deref(), Some("pw4"));
+        assert!(i[0].totp.as_deref().unwrap().starts_with("otpauth://totp/"));
+        assert_eq!(i[1].notes.as_deref(), Some("a note"));
+        assert!(i[1].totp.is_none());
+    }
 }

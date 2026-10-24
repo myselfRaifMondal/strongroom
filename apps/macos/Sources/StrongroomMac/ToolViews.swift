@@ -144,7 +144,9 @@ extension CsvSource: CaseIterable, Identifiable {
     var name: String {
         switch self {
         case .bitwarden: return "Bitwarden"
-        case .onePassword: return "1Password"
+        // Apple Passwords exports the same columns 1Password does
+        // (Title, URL, Username, Password, Notes, OTPAuth).
+        case .onePassword: return "Apple Passwords / 1Password"
         case .lastPass: return "LastPass"
         case .chrome: return "Chrome / Chromium browsers"
         }
@@ -152,7 +154,7 @@ extension CsvSource: CaseIterable, Identifiable {
     var howTo: String {
         switch self {
         case .bitwarden: return "Bitwarden: Tools › Export vault › File format .csv."
-        case .onePassword: return "1Password: File › Export › choose the account › CSV."
+        case .onePassword: return "Apple Passwords: open the Passwords app › File › Export All Passwords to File…. 1Password: File › Export › choose the account › CSV."
         case .lastPass: return "LastPass: Account options › Advanced › Export › LastPass CSV file."
         case .chrome: return "Chrome: Settings › Passwords › ⋮ › Export passwords."
         }
