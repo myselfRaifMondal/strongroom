@@ -11,6 +11,7 @@ enum SidebarSelection: Hashable {
     case folder(String)
     case tag(String)
     case health
+    case ranking
     case trash
 
     var folderPath: [String]? {
@@ -22,7 +23,7 @@ enum SidebarSelection: Hashable {
     var isItemScope: Bool {
         switch self {
         case .all, .favourites, .folder, .tag: return true
-        case .health, .trash: return false
+        case .health, .ranking, .trash: return false
         }
     }
 }
@@ -68,6 +69,18 @@ final class AppModel: ObservableObject {
     @Published var sheet: SheetRequest?
     @Published var templatePicker: TemplatePickerRequest?
     @Published var hotKeyRegistered = false
+    /// Security Ranking, computed in memory while unlocked; cleared on lock.
+    @Published private(set) var ranking: RankingResult = .empty
+    /// Rotation and organize settings (UserDefaults, not secret).
+    @Published private(set) var rotation = RotationSettings.load()
+    /// "N passwords should be changed" banner after unlock.
+    @Published var showRotationBanner = false
+    /// Previous folder/title of items organized this session (memory only).
+    @Published private(set) var organizeUndo = OrganizeUndo()
+    /// Organize preview waiting for the current sheet to close (after import).
+    @Published var pendingOrganize: OrganizeRequest?
+    let reminders = ReminderScheduler()
+    private var strengthCache = VaultAnalysis.StrengthCache()
     /// Bumped on every change so detail views reload.
     @Published private(set) var revision = 0
 
@@ -75,6 +88,16 @@ final class AppModel: ObservableObject {
         let id = UUID()
         let itemId: String?
         let draft: ItemDraft
+        /// "Change password…": open with the generator showing (nothing is
+        /// replaced until the user picks a value and saves).
+        var changePassword = false
+    }
+
+    /// The Organize preview. `ids` limits it to those items (imports).
+    struct OrganizeRequest: Identifiable, Equatable {
+        let id = UUID()
+        let ids: Set<String>?
+        let headline: String
     }
 
     struct TemplatePickerRequest: Identifiable {
@@ -105,6 +128,7 @@ final class AppModel: ObservableObject {
         case folderName(FolderNameMode)
         case moveItems([String])
         case moveFolder([String])
+        case organize(OrganizeRequest)
 
         var id: String {
             switch self {
@@ -114,6 +138,7 @@ final class AppModel: ObservableObject {
             case let .folderName(mode): return "folder:\(mode)"
             case let .moveItems(ids): return "move:\(ids.joined(separator: ","))"
             case let .moveFolder(path): return "movefolder:\(FolderPath.id(path))"
+            case let .organize(r): return "organize:\(r.id)"
             }
         }
     }
@@ -239,10 +264,15 @@ final class AppModel: ObservableObject {
         }
         reload()
         refreshGate()
+        rotation = RotationSettings.load()
+        showRotationBanner = ranking.dueCount > 0 && !rotation.isSnoozed(now: Clock.now())
+        rescheduleReminder()
     }
 
     func lock() {
         guard vault != nil else { return }
+        // The reminder carries only the count, computed now while unlocked.
+        rescheduleReminder()
         vault?.lock()
         vault = nil
         allItems = []
@@ -252,6 +282,11 @@ final class AppModel: ObservableObject {
         trash = []
         health = nil
         sessionFolders = []
+        ranking = .empty
+        strengthCache.clear()
+        organizeUndo = OrganizeUndo()
+        pendingOrganize = nil
+        showRotationBanner = false
         selection = nil
         editor = nil
         transfer = nil
@@ -307,6 +342,7 @@ final class AppModel: ObservableObject {
         if case let .tag(t) = sidebar, !tags.contains(t) { sidebar = .all }
         if let p = sidebar.folderPath, FolderTree.find(p, in: tree) == nil { sidebar = .all }
         applyFilter()
+        recomputeRanking()
         revision += 1
     }
 
@@ -329,7 +365,7 @@ final class AppModel: ObservableObject {
 
     func inScope(_ item: ItemSummary, _ scope: SidebarSelection) -> Bool {
         switch scope {
-        case .all, .health, .trash: return true
+        case .all, .health, .ranking, .trash: return true
         case .favourites: return ReservedTags.isFavourite(item.tags)
         case let .folder(id): return FolderPath.isInSubtree(item.folder, of: FolderPath.components(id))
         case let .tag(t): return item.tags.contains(t)
@@ -402,12 +438,15 @@ final class AppModel: ObservableObject {
         editor = EditorRequest(itemId: nil, draft: ItemDraft.sibling(of: item.data))
     }
 
-    func requestEdit(_ id: String) {
+    func requestEdit(_ id: String, changePassword: Bool = false) {
         guard let item = item(id) else { return }
         var d = ItemDraft(item.data)
         d.ensureTemplateFields()
-        editor = EditorRequest(itemId: id, draft: d)
+        editor = EditorRequest(itemId: id, draft: d, changePassword: changePassword)
     }
+
+    /// "Change password…" from the ranking: the editor with the generator open.
+    func requestChangePassword(_ id: String) { requestEdit(id, changePassword: true) }
 
     func save(_ draft: ItemDraft, id: String?) -> Bool {
         guard let vault else { return false }
@@ -710,10 +749,12 @@ final class AppModel: ObservableObject {
         let sk = secretKey.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             let data = try Data(contentsOf: url)
+            let before = Set(allItems.map(\.id))
             let s = try await CoreThread.run {
                 try vault.importVtf(file: data, password: password, secretKey: sk, now: Clock.now())
             }
             reload()
+            offerOrganize(newSince: before)
             infoMessage = Self.describe(s, prefix: "Imported")
             return true
         } catch {
@@ -732,11 +773,14 @@ final class AppModel: ObservableObject {
         defer { busy = false }
         do {
             let data = try Data(contentsOf: url)
+            let before = Set(allItems.map(\.id))
             let s = try await CoreThread.run { () throws -> ImportSummary in
                 let key = try TransferKey.loadOrCreate(dir)
                 return try vault.importVtfWithDeviceKey(file: data, device: key, now: Clock.now())
             }
             reload()
+            offerOrganize(newSince: before)
+            presentPendingOrganizeIfIdle()
             infoMessage = Self.describe(s, prefix: "Imported")
         } catch StrongroomError.UnlockFailed {
             errorMessage = "This file is not sealed to this Mac, or the check was cancelled."
@@ -757,8 +801,10 @@ final class AppModel: ObservableObject {
                 errorMessage = "The file is not readable text."
                 return nil
             }
+            let before = Set(allItems.map(\.id))
             let s = try await CoreThread.run { try vault.importCsv(source: source, csv: text, now: Clock.now()) }
             reload()
+            offerOrganize(newSince: before)
             return s
         } catch {
             errorMessage = CoreErrors.describe(error)
@@ -798,5 +844,110 @@ final class AppModel: ObservableObject {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         return f.string(from: Date())
+    }
+
+    // MARK: organize by service
+
+    /// Every item as the organizer sees it (no secrets).
+    func organizeItems() -> [OrganizeItem] {
+        guard let vault else { return [] }
+        return (try? VaultAnalysis.organizeItems(vault)) ?? []
+    }
+
+    func requestOrganize() {
+        guard isUnlocked else { return }
+        sheet = .organize(OrganizeRequest(ids: nil, headline: "Organize by Service"))
+    }
+
+    /// Applies folder/title changes and remembers the previous values so
+    /// "Undo Organize" can restore them until the vault locks.
+    @discardableResult
+    func applyOrganize(_ changes: [OrganizeChange], announce: Bool = true) -> Int {
+        guard let vault, !changes.isEmpty else { return 0 }
+        let (undo, failed) = Organizer.apply(changes, vault: vault, now: Clock.now())
+        organizeUndo.merge(undo)
+        reload()
+        if announce {
+            infoMessage = failed == 0
+                ? "Organized \(undo.count) item\(undo.count == 1 ? "" : "s"). Undo Organize is in the Organize menu until you lock."
+                : "Organized \(undo.count) items; \(failed) could not be updated."
+        }
+        return undo.count
+    }
+
+    var canUndoOrganize: Bool { !organizeUndo.isEmpty }
+
+    func undoOrganize() {
+        guard let vault, !organizeUndo.isEmpty else { return }
+        let (restored, failed) = Organizer.undo(organizeUndo, vault: vault, now: Clock.now())
+        organizeUndo = OrganizeUndo()
+        reload()
+        infoMessage = failed == 0
+            ? "Restored the previous folder and title of \(restored) item\(restored == 1 ? "" : "s")."
+            : "Restored \(restored) items; \(failed) could not be updated."
+    }
+
+    /// After an import: offer the Organize preview for the new logins that
+    /// arrived without a folder.
+    private func offerOrganize(newSince before: Set<String>) {
+        guard rotation.suggestFolders else { return }
+        let fresh = Set(allItems.filter { !before.contains($0.id) && FolderPath.components($0.folder).isEmpty && $0.kind == .login }.map(\.id))
+        guard !fresh.isEmpty else { return }
+        guard !Organizer.plan(items: organizeItems(), scope: .ids(fresh)).isEmpty else { return }
+        pendingOrganize = OrganizeRequest(ids: fresh, headline: "Organize the \(fresh.count) imported item\(fresh.count == 1 ? "" : "s")?")
+    }
+
+    /// Shows a waiting Organize preview once no other sheet is open.
+    func presentPendingOrganizeIfIdle() {
+        guard let req = pendingOrganize, sheet == nil, transfer == nil, editor == nil, templatePicker == nil, isUnlocked else { return }
+        pendingOrganize = nil
+        sheet = .organize(req)
+    }
+
+    // MARK: security ranking and rotation
+
+    /// Recomputes the ranking from the unlocked vault. Passwords are compared
+    /// inside `VaultAnalysis` and dropped; only scores and id groups remain.
+    func recomputeRanking() {
+        guard let vault else { ranking = .empty; return }
+        ranking = (try? VaultAnalysis.ranking(vault, policy: rotation, now: Clock.now(), cache: &strengthCache)) ?? .empty
+        if ranking.dueCount == 0 { showRotationBanner = false }
+    }
+
+    func updateRotation(_ change: (inout RotationSettings) -> Void) {
+        var r = rotation
+        change(&r)
+        guard r != rotation else { return }
+        let turnedOn = r.weeklyReminder && !rotation.weeklyReminder
+        r.save()
+        rotation = r
+        recomputeRanking()
+        if !r.weeklyReminder {
+            // Off: no pending reminder, even while locked.
+            reminders.removeAll()
+        } else if turnedOn {
+            Task {
+                _ = await reminders.requestAuthorization()
+                rescheduleReminder()
+            }
+        } else {
+            rescheduleReminder()
+        }
+    }
+
+    func snoozeRotation() {
+        updateRotation { $0.snoozedUntil = Clock.now() + RotationSettings.snoozeSeconds }
+        showRotationBanner = false
+    }
+
+    func resumeRotation() { updateRotation { $0.snoozedUntil = nil } }
+
+    /// One pending weekly notification carrying only the due count. Called
+    /// on unlock, on lock and when the settings change.
+    func rescheduleReminder() {
+        guard vault != nil else { return }
+        let count = ranking.dueCount
+        let settings = rotation
+        Task { await reminders.schedule(count: count, settings: settings) }
     }
 }

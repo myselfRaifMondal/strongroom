@@ -57,6 +57,15 @@ struct StrongroomApp: App {
                 Button("Trash") { delegate.model.sidebar = .trash }
                     .keyboardShortcut("4", modifiers: [.command])
                     .disabled(!delegate.model.isUnlocked)
+                Button("Security Ranking") { delegate.model.sidebar = .ranking }
+                    .keyboardShortcut("5", modifiers: [.command])
+                    .disabled(!delegate.model.isUnlocked)
+                Divider()
+                Button("Organize by Service…") { delegate.model.requestOrganize() }
+                    .keyboardShortcut("o", modifiers: [.command, .shift])
+                    .disabled(!delegate.model.isUnlocked)
+                Button("Undo Organize") { delegate.model.undoOrganize() }
+                    .disabled(!delegate.model.isUnlocked || !delegate.model.canUndoOrganize)
             }
             CommandGroup(after: .windowArrangement) {
                 Button("Quick Access") { delegate.quickAccess.toggle() }
@@ -79,6 +88,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var observers: [NSObjectProtocol] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Verification only: can this (ad-hoc signed) bundle post notifications?
+        if ProcessInfo.processInfo.environment["STRONGROOM_NOTIFICATION_PROBE"] == "1" {
+            Task { await ReminderScheduler.runProbe() }
+            return
+        }
         NSApp.setActivationPolicy(.regular)
         WindowPrivacy.install()
         AutoType.startTrackingExternalApps()

@@ -295,6 +295,111 @@ func probe() -> Int32 {
     return exitOk
 }
 
+// MARK: organize by service / security ranking (headless)
+
+func printPlan(_ plan: [OrganizeChange]) {
+    out("PLAN: \(plan.count) change(s)")
+    for c in plan.sorted(by: { ($0.newFolder, $0.newTitle) < ($1.newFolder, $1.newTitle) }) {
+        out("MOVE: \(c.newFolder) | \(c.newTitle) <- \(c.oldTitle)\(c.isPromotion ? " [promotion]" : "")")
+    }
+}
+
+func printRanking(_ r: RankingResult, _ vault: Vault, health: HealthReport?) {
+    let titles = Dictionary(uniqueKeysWithValues: ((try? vault.search(query: "", folder: nil, tag: nil)) ?? []).map { ($0.id, $0.title) })
+    out("RANKING: \(r.items.count) item(s); health score \(health.map { String($0.securityScore) } ?? "n/a"); "
+        + RiskPriority.allCases.reversed().map { "\($0.label) \(r.count($0))" }.joined(separator: ", ")
+        + "; \(r.sharedCount) share a password; \(r.dueCount) due")
+    for i in r.items {
+        out("RANK: \(i.risk) \(i.priority.label) \(i.inputs.importance == .critical ? "critical" : "-") \(i.due ? "due(" + i.dueReasons.map(\.rawValue).joined(separator: ",") + ")" : "-") \(titles[i.id] ?? i.id)")
+    }
+    for c in r.clusters {
+        out("CLUSTER: same password on \(c.itemIDs.count): " + c.itemIDs.map { titles[$0] ?? $0 }.joined(separator: ", "))
+    }
+}
+
+func organize(_ a: Args) throws -> Int32 {
+    let vault = try open(a)
+    defer { vault.lock() }
+    let scope: OrganizeScope = a.optional("scope") == "all" ? .all : .unfiled
+    let plan = Organizer.plan(items: try VaultAnalysis.organizeItems(vault), scope: scope)
+    printPlan(plan)
+    if a.optional("apply") == "yes" {
+        let (undo, failed) = Organizer.apply(plan, vault: vault, now: Clock.now())
+        out("APPLIED: \(undo.count) changed, \(failed) failed")
+    }
+    return exitOk
+}
+
+func ranking(_ a: Args) throws -> Int32 {
+    let vault = try open(a)
+    defer { vault.lock() }
+    var cache = VaultAnalysis.StrengthCache()
+    let r = try VaultAnalysis.ranking(vault, policy: RotationSettings(), now: Clock.now(), cache: &cache)
+    printRanking(r, vault, health: try? vault.passwordHealth(now: Clock.now()))
+    out("NOTIFICATION TEXT: \(RotationReminder.body(count: r.dueCount))")
+    return exitOk
+}
+
+/// A synthetic "Apple Passwords" export (fake accounts, throwaway passwords),
+/// imported into a fresh vault, organized, ranked, undone.
+func organizeDemo(_ a: Args) throws -> Int32 {
+    let dir = URL(fileURLWithPath: try a.required("dir"))
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let pw = try password()
+    let sk = try newSecretKey()
+    let path = dir.appendingPathComponent("demo.srdb").path
+    let vault = try Vault.create(path: path, password: pw, secretKey: sk, now: Clock.now())
+    defer { vault.lock() }
+    try SecureFile.write(Data(sk.utf8), to: dir.appendingPathComponent("demo.secret-key.txt"))
+    let shared = "Summer2019!"
+    let rows: [(String, String, String, String, String)] = [
+        ("instagram.com (alpha.one)", "https://www.instagram.com/", "alpha.one", shared, ""),
+        ("instagram.com (beta.two)", "https://instagram.com/accounts/login", "beta.two", "k8#Qz!vR2m@Lp9wX", ""),
+        ("accounts.google.com (me@example.com)", "https://accounts.google.com/", "me@example.com", shared, ""),
+        ("github.com (octo-dev)", "https://github.com/login", "octo-dev", "Tq7&uW#p2Lr!9zXc", "otpauth://totp/GitHub:octo?secret=JBSWY3DPEHPK3PXP&issuer=GitHub"),
+        ("signin.aws.amazon.com (root)", "https://signin.aws.amazon.com/", "root@example.com", "password1", ""),
+        ("www.amazon.in (me@example.com)", "https://www.amazon.in/ap/signin", "me@example.com", shared, ""),
+        ("kite.zerodha.com (AB1234)", "https://kite.zerodha.com/", "AB1234", shared, ""),
+        ("mail.hostinger.com (me@example.com)", "https://mail.hostinger.com/", "me@example.com", "mailpass", ""),
+        ("hpanel.hostinger.com (me@example.com)", "https://hpanel.hostinger.com/", "admin@example.com", "Vh4!nQ8#zLp2@wRt", ""),
+        ("acme.wd5.myworkdayjobs.com (me@example.com)", "https://acme.wd5.myworkdayjobs.com/careers", "me@example.com", shared, ""),
+        ("globex.wd1.myworkdayjobs.com (me@example.com)", "https://globex.wd1.myworkdayjobs.com/", "me@example.com", "Xc9#Lm2!pQ7@vTz4", ""),
+        ("www.irctc.co.in (traveller)", "https://www.irctc.co.in/nget/", "traveller", "irctc123", ""),
+        ("auth.riotgames.com (gamer)", "https://auth.riotgames.com/", "gamer", shared, ""),
+        ("portal.local-gym.co.uk (member)", "https://portal.local-gym.co.uk/", "member", "gym", ""),
+        ("Home router", "", "admin", "admin", ""),
+    ]
+    func q(_ s: String) -> String { "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
+    var csv = "Title,URL,Username,Password,Notes,OTPAuth\n"
+    for r in rows { csv += [r.0, r.1, r.2, r.3, "", r.4].map(q).joined(separator: ",") + "\n" }
+    let summary = try vault.importCsv(source: .onePassword, csv: csv, now: Clock.now())
+    out("IMPORTED: \(summary.added) added")
+
+    var all = try VaultAnalysis.organizeItems(vault)
+    var before: [String: ItemInput] = [:]
+    for i in all { before[i.id] = try vault.getItem(id: i.id).data }
+    let plan = Organizer.plan(items: all, scope: .unfiled)
+    printPlan(plan)
+    let (undo, failed) = Organizer.apply(plan, vault: vault, now: Clock.now())
+    out("APPLIED: \(undo.count) changed, \(failed) failed")
+    var cache = VaultAnalysis.StrengthCache()
+    printRanking(try VaultAnalysis.ranking(vault, policy: RotationSettings(), now: Clock.now(), cache: &cache), vault,
+                 health: try? vault.passwordHealth(now: Clock.now()))
+
+    // A second GitHub account added later: suggestion + promotion of the first.
+    all = try VaultAnalysis.organizeItems(vault)
+    if let s = Organizer.suggest(urls: ["https://github.com"], username: "octo-work", title: "", existing: all) {
+        out("SUGGEST: new github.com login -> \(s.folder) | \(s.title); promotions: "
+            + s.promotions.map { "\($0.oldFolder ?? "-")/\($0.oldTitle) -> \($0.newFolder)/\($0.newTitle)" }.joined(separator: "; "))
+    }
+
+    let (restored, undoFailed) = Organizer.undo(undo, vault: vault, now: Clock.now())
+    var exact = true
+    for (id, input) in before where try vault.getItem(id: id).data != input { exact = false }
+    out("UNDO: \(restored) restored, \(undoFailed) failed, inputs identical to before organize: \(exact)")
+    return exact && undoFailed == 0 && failed == 0 ? exitOk : exitFail
+}
+
 func usage() -> Int32 {
     err("""
         strongroom-mac-cli <command> [options]
@@ -307,6 +412,9 @@ func usage() -> Int32 {
           roundtrip --dir DIR                        create, add, export, import into a second vault
           hierarchy --dir DIR                        nested folders + recovery codes survive export/import
           probe                                      FFI link + Secure Enclave / Touch ID availability
+          organize  --vault PATH [--scope all] [--apply yes]   Organize by Service plan (and apply)
+          ranking   --vault PATH                     Security Ranking, worst first (no passwords printed)
+          organize-demo --dir DIR                    synthetic Apple Passwords CSV -> organize -> rank -> undo
         Secrets: STRONGROOM_PASSWORD, STRONGROOM_SECRET_KEY, STRONGROOM_ITEM_PASSWORD (env).
         """)
     return exitUsage
@@ -326,6 +434,9 @@ func execute(_ argv: [String]) -> Int32 {
         case "roundtrip": return try roundTrip(a)
         case "hierarchy": return try hierarchyRoundTrip(a)
         case "probe": return probe()
+        case "organize": return try organize(a)
+        case "ranking": return try ranking(a)
+        case "organize-demo": return try organizeDemo(a)
         default: return usage()
         }
     } catch let StrongroomError.Unsupported(reason) {

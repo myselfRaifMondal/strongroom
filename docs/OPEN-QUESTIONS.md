@@ -211,6 +211,41 @@ it must survive fingerprint changes and Touch ID being turned off, or files
 sealed to this Mac become unopenable. Its public key is the pairing payload;
 paired devices' public keys live in `paired-devices.json` (0600, not secret).
 
+## OQ-M9 macOS: organize by service, security ranking, rotation reminders
+Default, all app-side (no FFI, UDL or format change):
+- Organize by Service classifies a login by the registrable domain of its first
+  URL against a built-in, generic map of well-known services
+  (`StrongroomKit/ServiceCatalog.swift`; a small built-in list of multi-label
+  suffixes such as .co.uk/.co.in, no public-suffix download). More than one
+  account for a service: "<Category>/<Service>", title = username (careers/LMS
+  portals keep the employer: "acme (user)"). One account: "<Category>",
+  title "<Service> (<username>)". Unknown sites use "Other" and the domain
+  ("Other/<domain>" once there are two accounts); no URL: "Other", title kept.
+  Only `folder` and `title` change, via `update_item`, after a preview; undo
+  holds the previous values in memory until lock. New logins get the same
+  suggestion in the editor (editable; a second account offers to move the
+  first into the service folder), and imports offer the preview for the new
+  items. Setting: "Suggest folders for new items" (on).
+- Risk score 0-100 (formula in `StrongroomKit/SecurityRanking.swift`):
+  strength 40/30/18/8/0, reuse 0/25/30/35, age 0/5/10/15 (180/365/730 days),
+  no TOTP 5, times 1.5 critical / 1.0 / 0.6 low; Critical >= 70, High >= 45,
+  Medium >= 20. Critical = Email & Identity, Finance, Developer & Cloud (by
+  folder, template, kind or URL) or tag `priority:critical`; `priority:low`
+  lowers it. Reuse is found by comparing passwords in memory while unlocked;
+  no hash or password is kept, and the result is dropped on lock. Age is
+  counted from the last revision that changed the password (item history),
+  not `modified_at`, because organizing changes `modified_at`.
+- Due = age >= policy (critical 90 days, others 365; 30/60/90/180/365/never)
+  OR reused OR strength <= 1. Banner after unlock; one repeating weekly
+  local notification whose text is only a count ("Strongroom: 12 passwords
+  are due for a change."), rescheduled on unlock and lock. Settings live in
+  UserDefaults. Tested on the dev Mac (macOS 26, 2026-10-24) with an ad-hoc
+  signed copy under a separate bundle id, launched directly and via `open`:
+  `requestAuthorization` fails at once with UNErrorDomain code 1
+  (notificationsNotAllowed) and no prompt appears. So for ad-hoc builds the
+  unlock banner is the only reminder and Settings says so; a Developer ID
+  signed build is expected to get the normal prompt (not verified).
+
 ## OQ-12 SQLCipher `cipher_memory_security` off on all platforms (owner-accepted)
 Decision (owner, 2026-10-23): off everywhere for v1, documented as a residual
 risk (THREAT-MODEL 4.11). With it on, SQLCipher mlocks every SQLite

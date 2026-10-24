@@ -53,6 +53,16 @@ struct SidebarView: View {
                     }
                 }
                 .tag(SidebarSelection.health)
+                HStack {
+                    Label("Security Ranking", systemImage: "list.number")
+                    Spacer()
+                    if model.ranking.dueCount > 0 {
+                        Text("\(model.ranking.dueCount)").font(.caption.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .help("\(model.ranking.dueCount) due for a change")
+                    }
+                }
+                .tag(SidebarSelection.ranking)
                 SidebarRow(title: "Trash", symbol: "trash", count: model.trash.count)
                     .tag(SidebarSelection.trash)
             }

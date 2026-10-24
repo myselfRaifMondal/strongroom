@@ -102,9 +102,19 @@ struct ItemEditorView: View {
     @State private var revealSecrets = false
     @State private var showPasteCodes = false
     @State private var pastedCodes = ""
+    /// Opened from the ranking's "Change password…".
+    let changePassword: Bool
+    /// Organize-by-service suggestion for a new login (folder + title).
+    @State private var existing: [OrganizeItem] = []
+    @State private var suggestion: OrganizeSuggestion?
+    @State private var suggestedFolder: String?
+    @State private var suggestedTitle: String?
+    @State private var suggestionDismissed = false
+    @State private var confirmPromotion = false
 
-    init(itemId: String?, draft: ItemDraft) {
+    init(itemId: String?, draft: ItemDraft, changePassword: Bool = false) {
         self.itemId = itemId
+        self.changePassword = changePassword
         _draft = State(initialValue: draft)
     }
 
@@ -119,9 +129,20 @@ struct ItemEditorView: View {
                 Text(itemId == nil ? "New \(template?.name ?? draft.kind.displayName)" : "Edit \(template?.name ?? draft.kind.displayName)")
                     .font(.title3.bold())
                 Spacer()
+                if WebsiteOpener.url(draft.urls) != nil {
+                    Button { WebsiteOpener.open(draft.urls) } label: { Label("Open Website", systemImage: "safari") }
+                        .controlSize(.small)
+                        .help("Opens the website in your browser to change the password there")
+                }
                 Toggle("Show hidden values", isOn: $revealSecrets).toggleStyle(.switch).controlSize(.small)
             }
             .padding(.horizontal, 20).padding(.vertical, 12)
+            if changePassword {
+                Text("Change the password on the website first (Open Website), then pick a new one in the generator, use it there, and save here. Nothing is replaced until you save.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.horizontal, 20).padding(.bottom, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             Divider()
             Form {
                 Section {
@@ -145,6 +166,15 @@ struct ItemEditorView: View {
                         .menuStyle(.borderlessButton)
                         .fixedSize()
                         .help("Choose an existing folder")
+                    }
+                    if let s = suggestion, FolderPath.canonical(draft.folder) == FolderPath.canonical(s.folder) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "wand.and.stars").foregroundStyle(.tint)
+                            Text("Filed under \(FolderPath.components(s.folder).joined(separator: " › ")) from the website. Edit the folder to choose another.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Don't File") { dismissSuggestion() }.controlSize(.small)
+                        }
                     }
                     Toggle("Favourite", isOn: $draft.favourite)
                 }
@@ -231,13 +261,42 @@ struct ItemEditorView: View {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(itemId == nil ? "Add" : "Save") {
-                    if model.save(draft, id: itemId) { dismiss() }
+                    if !pendingPromotions.isEmpty {
+                        confirmPromotion = true
+                    } else if model.save(draft, id: itemId) {
+                        dismiss()
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!draft.isValid)
             }
             .padding(12)
         }
+        .confirmationDialog(promotionTitle, isPresented: $confirmPromotion) {
+            Button("Move and Retitle") {
+                let promotions = pendingPromotions
+                if model.save(draft, id: itemId) {
+                    model.applyOrganize(promotions)
+                    dismiss()
+                }
+            }
+            Button("Save Only") { if model.save(draft, id: itemId) { dismiss() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(promotionMessage)
+        }
+        .onAppear {
+            if itemId == nil && model.rotation.suggestFolders {
+                existing = model.organizeItems()
+                updateSuggestion()
+            }
+            if changePassword {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showGenerator = true }
+            }
+        }
+        .onChange(of: draft.urls) { _, _ in updateSuggestion() }
+        .onChange(of: draft.username) { _, _ in updateSuggestion() }
+        .onChange(of: draft.kind) { _, _ in updateSuggestion() }
         .frame(width: 640, height: 720)
         .popover(isPresented: $showPasteCodes, arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 8) {
@@ -484,5 +543,54 @@ struct SecretEditor: View {
         } else {
             SecureField("", text: $text, prompt: Text(placeholder))
         }
+    }
+}
+
+// MARK: folder suggestion (new logins)
+
+extension ItemEditorView {
+    /// Promotions to offer on save: only while the suggested folder is kept.
+    var pendingPromotions: [OrganizeChange] {
+        guard itemId == nil, let s = suggestion, !s.promotions.isEmpty,
+              FolderPath.canonical(draft.folder) == FolderPath.canonical(s.folder) else { return [] }
+        return s.promotions
+    }
+
+    var promotionTitle: String {
+        "\(suggestion?.service ?? "This service") now has more than one account"
+    }
+
+    var promotionMessage: String {
+        let names = pendingPromotions.map { "“\($0.oldTitle)”" }.joined(separator: ", ")
+        let folder = FolderPath.components(suggestion?.folder).joined(separator: " › ")
+        return "Move \(names) into \(folder) too, and title each account by its username? Only the folder and title change; you can undo it from the Organize menu until you lock."
+    }
+
+    /// Prefills folder and title from the website. A value the user typed or
+    /// chose is never overwritten: only an empty field, or one still holding
+    /// the previous suggestion, follows the new suggestion.
+    func updateSuggestion() {
+        guard itemId == nil, model.rotation.suggestFolders, !suggestionDismissed, draft.kind == .login else {
+            suggestion = nil
+            return
+        }
+        let new = Organizer.suggest(urls: draft.urls, username: draft.username, title: draft.title, existing: existing)
+        let folderIsOurs = draft.folder.trimmingCharacters(in: .whitespaces).isEmpty || draft.folder == suggestedFolder
+        let titleIsOurs = draft.title.trimmingCharacters(in: .whitespaces).isEmpty || draft.title == suggestedTitle
+        if let new {
+            if folderIsOurs { draft.folder = new.folder; suggestedFolder = new.folder }
+            if titleIsOurs { draft.title = new.title; suggestedTitle = new.title }
+        } else {
+            if folderIsOurs, suggestedFolder != nil { draft.folder = ""; suggestedFolder = nil }
+            if titleIsOurs, suggestedTitle != nil { draft.title = ""; suggestedTitle = nil }
+        }
+        suggestion = new
+    }
+
+    func dismissSuggestion() {
+        if draft.folder == suggestedFolder { draft.folder = "" }
+        suggestionDismissed = true
+        suggestion = nil
+        suggestedFolder = nil
     }
 }

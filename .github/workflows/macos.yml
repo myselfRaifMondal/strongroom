@@ -91,6 +91,13 @@ jobs:
           apps/macos/out/strongroom-mac-cli hierarchy --dir "$RUNNER_TEMP/hierarchy"
           rm -rf "$RUNNER_TEMP/hierarchy"
 
+      - name: CLI organize demo (Apple Passwords CSV -> organize by service -> ranking -> exact undo)
+        env:
+          STRONGROOM_PASSWORD: "ci-throwaway-master-password"
+        run: |
+          apps/macos/out/strongroom-mac-cli organize-demo --dir "$RUNNER_TEMP/organize"
+          rm -rf "$RUNNER_TEMP/organize"
+
       - name: Launch Strongroom.app (alive check)
         run: |
           data="$RUNNER_TEMP/app-data"

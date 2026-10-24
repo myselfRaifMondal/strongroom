@@ -148,6 +148,7 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
+            RotationSettingsSection(reminders: model.reminders)
             Section("Quick access") {
                 LabeledContent("Global shortcut", value: "⌥⌘\\")
                 if !model.hotKeyRegistered {

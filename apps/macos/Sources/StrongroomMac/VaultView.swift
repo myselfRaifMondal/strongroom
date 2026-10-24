@@ -18,6 +18,21 @@ struct VaultView: View {
     @State private var showGenerator = false
 
     var body: some View {
+        VStack(spacing: 0) {
+            if model.showRotationBanner && model.ranking.dueCount > 0 {
+                RotationBanner()
+                Divider()
+            }
+            splitView
+        }
+        .onChange(of: model.sheet == nil && model.transfer == nil && model.editor == nil) { _, idle in
+            // An import's "Organize the N imported items?" waits for its sheet to close.
+            if idle { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { model.presentPendingOrganizeIfIdle() } }
+        }
+        .onChange(of: model.pendingOrganize) { _, _ in model.presentPendingOrganizeIfIdle() }
+    }
+
+    private var splitView: some View {
         NavigationSplitView {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 200, ideal: 230)
@@ -46,6 +61,15 @@ struct VaultView: View {
                 .help("New item (choose a template)")
                 Button { showGenerator = true } label: { Label("Generator", systemImage: "wand.and.stars") }
                 Menu {
+                    Button("Organize by Service…") { model.requestOrganize() }
+                    Button("Undo Organize") { model.undoOrganize() }.disabled(!model.canUndoOrganize)
+                } label: {
+                    Label("Organize", systemImage: "folder.badge.gearshape")
+                } primaryAction: {
+                    model.requestOrganize()
+                }
+                .help("Organize by service: propose folders from each login's website")
+                Menu {
                     Button("Import VTF…") { model.beginImport() }
                     Button("Import with This Mac's Key…") { Task { await model.importWithThisMacsKey() } }
                     Button("Import from Another Password Manager (CSV)…") { model.sheet = .csvImport }
@@ -61,7 +85,7 @@ struct VaultView: View {
             }
         }
         .sheet(item: $model.editor) { req in
-            ItemEditorView(itemId: req.itemId, draft: req.draft)
+            ItemEditorView(itemId: req.itemId, draft: req.draft, changePassword: req.changePassword)
         }
         .sheet(item: $model.transfer) { req in
             TransferSheet(request: req)
@@ -77,6 +101,7 @@ struct VaultView: View {
             case let .folderName(mode): FolderNameSheet(mode: mode)
             case let .moveItems(ids): MoveItemsSheet(itemIds: ids)
             case let .moveFolder(path): MoveFolderSheet(path: path)
+            case let .organize(r): OrganizeSheet(request: r)
             }
         }
         .sheet(isPresented: $showGenerator) {
@@ -111,6 +136,7 @@ struct ContentColumn: View {
     var body: some View {
         switch model.sidebar {
         case .health: HealthView()
+        case .ranking: RankingView()
         case .trash: TrashView()
         default: ItemListView()
         }
@@ -173,6 +199,7 @@ struct ItemListView: View {
         case let .folder(id): return FolderPath.components(id).last ?? "Folder"
         case let .tag(t): return "#\(t)"
         case .health: return "Password Health"
+        case .ranking: return "Security Ranking"
         case .trash: return "Trash"
         }
     }
@@ -314,6 +341,9 @@ struct DetailColumn: View {
                 FolderOverviewView(path: FolderPath.components(id))
             case .health:
                 ContentUnavailableView("Select an item to review it", systemImage: "checkmark.shield")
+            case .ranking:
+                ContentUnavailableView("Fix the top of the list first", systemImage: "list.number",
+                                       description: Text("“Change password…” opens the item with the generator ready. Nothing is replaced until you save."))
             case .trash:
                 ContentUnavailableView("Trashed items stay for 180 days", systemImage: "trash",
                                        description: Text("Restore them from the list, or let them expire."))
