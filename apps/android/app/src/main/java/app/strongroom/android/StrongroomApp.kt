@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.WindowManager
+import app.strongroom.android.core.AutoLock
 import app.strongroom.android.core.Session
 import app.strongroom.android.security.SecureClipboard
 
@@ -17,6 +18,15 @@ class StrongroomApp : Application() {
     private val handler = Handler(Looper.getMainLooper())
     private var startedActivities = 0
     private val autoLock = Runnable { Session.lock() }
+
+    /** Auto-lock delay after the app leaves the screen (Settings). Non-secret. */
+    var autoLockMinutes: Int
+        get() = AutoLock.sanitize(
+            getSharedPreferences(PREFS, MODE_PRIVATE).getInt(KEY_AUTO_LOCK, AutoLock.DEFAULT_MINUTES),
+        )
+        set(value) {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(KEY_AUTO_LOCK, AutoLock.sanitize(value)).apply()
+        }
 
     override fun onCreate() {
         super.onCreate()
@@ -42,7 +52,7 @@ class StrongroomApp : Application() {
                 if (startedActivities <= 0) {
                     // Leaving the app (incl. the SAF picker) keeps the vault
                     // open briefly; after that it is locked.
-                    handler.postDelayed(autoLock, AUTO_LOCK_MS)
+                    handler.postDelayed(autoLock, autoLockMinutes * 60_000L)
                 }
             }
 
@@ -54,7 +64,8 @@ class StrongroomApp : Application() {
     }
 
     companion object {
-        const val AUTO_LOCK_MS = 3 * 60 * 1000L
+        private const val PREFS = "settings"
+        private const val KEY_AUTO_LOCK = "autoLockMinutes"
         lateinit var instance: StrongroomApp
             private set
     }

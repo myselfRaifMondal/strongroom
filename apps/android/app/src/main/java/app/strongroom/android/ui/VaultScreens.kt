@@ -1,5 +1,6 @@
 package app.strongroom.android.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import app.strongroom.android.StrongroomApp
 import app.strongroom.android.core.Clock
+import app.strongroom.android.core.MasterPasswordRules
 import app.strongroom.android.core.Session
 import app.strongroom.android.core.VaultFiles
 import app.strongroom.android.core.VaultUnlocker
@@ -57,14 +59,21 @@ fun VaultPickerScreen(nav: Nav) {
         if (names.isEmpty()) Text("No vaults yet.")
         names.forEach { name ->
             Card(
-                onClick = { nav.push(Route.Unlock(name)) },
+                onClick = {
+                    // Already open (e.g. just created): go straight to its items.
+                    if (Session.unlockedName.value == name && Session.vault != null) {
+                        nav.reset(Route.Vaults, Route.Items)
+                    } else {
+                        nav.push(Route.Unlock(name))
+                    }
+                },
                 modifier = Modifier.fillMaxWidth().testTag("vault_$name"),
             ) { Text(name, modifier = Modifier.padding16()) }
         }
         Button(onClick = { nav.push(Route.CreateVault) }, modifier = Modifier.testTag("createVault")) {
             Text("Create a new vault")
         }
-        OutlinedButton(onClick = { nav.push(Route.Generator) }, modifier = Modifier.testTag("openGenerator")) {
+        OutlinedButton(onClick = { nav.push(Route.Generator()) }, modifier = Modifier.testTag("openGenerator")) {
             Text("Password generator")
         }
     }
@@ -76,9 +85,10 @@ fun CreateVaultScreen(nav: Nav) {
     val files = remember { VaultFiles(context) }
     val scope = rememberCoroutineScope()
     val op = rememberOpState()
-    var name by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var confirm by remember { mutableStateOf("") }
+    var name by retain("name") { mutableStateOf("") }
+    var password by retain("password") { mutableStateOf("") }
+    var confirm by retain("confirm") { mutableStateOf("") }
+    val problem = MasterPasswordRules.problem(password, confirm)
     val strength = remember(password) {
         if (password.isEmpty()) null else runCatching { estimateStrength(password) }.getOrNull()
     }
@@ -89,18 +99,22 @@ fun CreateVaultScreen(nav: Nav) {
         SecretField(password, { password = it }, "Master password", "masterPassword")
         strength?.let {
             LinearProgressIndicator(progress = { (it.score.toInt() + 1) / 5f }, modifier = Modifier.fillMaxWidth())
-            Text("Strength ${it.score}/4, ~${it.entropyBits.toInt()} bits" +
-                if (it.warnings.isNotEmpty()) " - " + it.warnings.joinToString("; ") else "")
+            Text(
+                "Strength ${it.score}/4, ~${it.entropyBits.toInt()} bits" +
+                    if (it.warnings.isNotEmpty()) " - " + it.warnings.joinToString("; ") else "",
+                modifier = Modifier.testTag("strength"),
+            )
         }
         SecretField(confirm, { confirm = it }, "Confirm master password", "confirmPassword")
         Button(
-            enabled = !op.busy && name.isNotBlank() && password.isNotEmpty() && password == confirm,
+            enabled = !op.busy && name.isNotBlank() && problem == null,
             modifier = Modifier.testTag("createVaultSubmit"),
             onClick = {
                 scope.launch {
                     op.run {
                         val n = name.trim()
                         require(VaultFiles.validName(n)) { "Use 1-40 letters, digits, spaces, '-' or '_' for the name." }
+                        MasterPasswordRules.problem(password, confirm)?.let { throw IllegalStateException(it) }
                         check(!files.exists(n)) { "A vault named \"$n\" already exists." }
                         val secretKey = generateSecretKey()
                         check(secretKey.isNotBlank()) { "The core returned no Secret Key (core not implemented yet)." }
@@ -114,8 +128,8 @@ fun CreateVaultScreen(nav: Nav) {
                 }
             },
         ) { Text("Create vault") }
-        if (password.isNotEmpty() && confirm.isNotEmpty() && password != confirm) {
-            Text("Passwords do not match.", color = MaterialTheme.colorScheme.error)
+        if (password.isNotEmpty() && problem != null) {
+            Text(problem, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("passwordProblem"))
         }
         OpStatus(op)
     }
@@ -125,6 +139,8 @@ fun CreateVaultScreen(nav: Nav) {
 fun SecretKeyScreen(nav: Nav, route: Route.ShowSecretKey) {
     val app = LocalContext.current.applicationContext as StrongroomApp
     var acknowledged by remember { mutableStateOf(false) }
+    // Shown only once: Back must not skip past it without the acknowledgement.
+    BackHandler(enabled = true) { }
     ScreenScaffold(title = "Your Secret Key", onBack = null) {
         Text("This is shown only once. Write it down now and keep it somewhere safe and offline.")
         Card(modifier = Modifier.fillMaxWidth()) {
