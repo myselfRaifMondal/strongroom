@@ -33,3 +33,27 @@ it when the `.so` and bindings already exist.
   the `ImportVtfProbe` instrumentation test and prints `SR_IMPORT_TITLE` lines
   (cross-platform round-trip).
 - `scripts/check-no-network.sh <apk>` - fails on any network permission.
+
+## Tests
+
+- `./gradlew testDebugUnitTest` - pure logic (master-password rule, CSV
+  source detection, back-stack state, autofill field heuristics, SEC1, boot id).
+- `./gradlew connectedDebugAndroidTest` - on a device/emulator whose screen
+  is unlocked (after a reboot the user storage stays locked until the PIN is
+  entered, and instrumentation cannot start): config-change handling, no
+  network permission, sensitive + auto-cleared clipboard (takes ~30 s), CSV
+  import for every supported exporter, plus the VTF probes (skipped without
+  arguments).
+
+## Autofill walkthrough on an emulator
+
+The test APK (never the app APK) contains `AutofillTestActivity`, a login
+form for trying the autofill service without a browser or network:
+
+    adb shell settings put secure autofill_service \
+        app.strongroom.android/.autofill.StrongroomAutofillService
+    adb shell am start -n app.strongroom.android.test/app.strongroom.android.AutofillTestActivity --ez web true
+
+The WebView form reports this app's package name (not a web domain) to the
+autofill service, so the matching vault item needs the website
+`app.strongroom.android.test`. Locked vaults show "Unlock Strongroom".
