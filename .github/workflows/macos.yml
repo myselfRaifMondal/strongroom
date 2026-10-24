@@ -4,7 +4,7 @@ name: macos
 
 on:
   push:
-    branches: ["main", "phase2/macos", "phase2/macos-*", "phase3/*"]
+    branches: ["main", "phase2/macos", "phase2/macos-*", "phase3/*", "feature/macos-*"]
     paths:
       - "apps/macos/**"
       - "crates/**"
@@ -83,6 +83,13 @@ jobs:
           STRONGROOM_SECRET_KEY="$(cat "$dir/source.secret-key.txt")" \
             apps/macos/out/strongroom-mac-cli import --in "$dir/macos-roundtrip.vtf"
           cp "$dir/macos-roundtrip.vtf" apps/macos/out/
+
+      - name: CLI hierarchy round-trip (nested folders + recovery codes survive export/import)
+        env:
+          STRONGROOM_PASSWORD: "ci-throwaway-master-password"
+        run: |
+          apps/macos/out/strongroom-mac-cli hierarchy --dir "$RUNNER_TEMP/hierarchy"
+          rm -rf "$RUNNER_TEMP/hierarchy"
 
       - name: Launch Strongroom.app (alive check)
         run: |

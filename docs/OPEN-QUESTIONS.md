@@ -182,6 +182,35 @@ menu-bar backing windows (not in `NSApp.windows`, no app content) report
 sharing state 1; the app cannot reach them. Whether a given capture API
 honours `.none` is up to macOS.
 
+## OQ-M6 macOS: folder hierarchy and sensitive sections without a format change
+Default: a folder is the item's `folder` string read as a path ("Social/Instagram",
+"Social / Instagram"); the app writes "A/B". Folders exist only through their
+items, so a new empty folder lasts until the vault locks. Rename/move is
+`update_item` on every live item in the subtree (each keeps the old folder in
+its history; trashed items keep theirs). Favourites are the tag `favourite`,
+templates the tag `template:<id>`. Recovery codes, security questions, 2FA
+notes, PINs and seed words are custom fields named by the convention in
+`apps/macos/Sources/StrongroomKit/SensitiveFields.swift`; a used recovery code
+gets the name prefix `[used] ` (the value is never changed). Other clients show
+these as ordinary tags and fields.
+
+## OQ-M7 macOS: additional (decoy) vault
+Default: the second vault is `vault-2.srdb` in the app data directory. Password
+unlock always calls `unlock_first_matching([vault.srdb, vault-2.srdb])`, whether
+or not the second file exists. The UI never names the open vault; the "create"
+button is hidden for both vaults once the file exists. Not hidden from someone
+who can list the data directory. Touch ID unlock opens the vault that was open
+when Touch ID was turned on, recorded in `device-unlock-target.txt` ("1"/"2");
+which vault that is gets found by wrapping the vault key to a throwaway
+in-memory P-256 key and opening each file with it (no Argon2id, no prompt).
+
+## OQ-M8 macOS: transfer key for pairing
+Default: a separate Secure Enclave P-256 key (`transfer-key.se`) with
+`.userPresence` (Touch ID or the login password), not the Touch ID unlock key:
+it must survive fingerprint changes and Touch ID being turned off, or files
+sealed to this Mac become unopenable. Its public key is the pairing payload;
+paired devices' public keys live in `paired-devices.json` (0600, not secret).
+
 ## OQ-12 SQLCipher `cipher_memory_security` off on all platforms (owner-accepted)
 Decision (owner, 2026-10-23): off everywhere for v1, documented as a residual
 risk (THREAT-MODEL 4.11). With it on, SQLCipher mlocks every SQLite
