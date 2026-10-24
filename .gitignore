@@ -17,3 +17,6 @@ obj/
 __pycache__/
 .claude/
 **/.claude/
+
+# Private launch drafts; never published from the repo.
+/outreach/
