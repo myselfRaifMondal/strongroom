@@ -7,6 +7,7 @@ import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import app.strongroom.android.autofill.AutofillSaveActivity
 import app.strongroom.android.autofill.AutofillUnlockActivity
 import app.strongroom.android.core.VaultFiles
 import app.strongroom.android.core.VaultUnlocker
@@ -30,7 +31,7 @@ class AppBehaviourTest {
         val needed = ActivityInfo.CONFIG_ORIENTATION or ActivityInfo.CONFIG_SCREEN_SIZE or
             ActivityInfo.CONFIG_SMALLEST_SCREEN_SIZE or ActivityInfo.CONFIG_SCREEN_LAYOUT or
             ActivityInfo.CONFIG_UI_MODE or ActivityInfo.CONFIG_KEYBOARD_HIDDEN
-        for (cls in listOf(MainActivity::class.java, AutofillUnlockActivity::class.java)) {
+        for (cls in listOf(MainActivity::class.java, AutofillUnlockActivity::class.java, AutofillSaveActivity::class.java)) {
             val info = context.packageManager.getActivityInfo(ComponentName(context, cls), PackageManager.GET_META_DATA)
             assertEquals("${cls.simpleName} configChanges", needed, info.configChanges and needed)
         }

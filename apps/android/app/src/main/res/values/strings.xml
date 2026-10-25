@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">Strongroom</string>
     <string name="autofill_unlock">Unlock Strongroom</string>
+    <string name="autofill_nothing_to_save">No password to save.</string>
 </resources>

@@ -2,6 +2,7 @@ package app.strongroom.android
 
 import android.text.InputType
 import app.strongroom.android.autofill.DomainQuery
+import app.strongroom.android.autofill.SaveText
 import app.strongroom.android.autofill.FieldClassifier
 import app.strongroom.android.autofill.FieldType
 import app.strongroom.android.core.VaultFiles
@@ -97,6 +98,33 @@ class DomainQueryTest {
         assertEquals("com.example.app", DomainQuery.of(null, "com.example.app"))
         assertEquals("com.example.app", DomainQuery.of("", "com.example.app"))
         assertNull(DomainQuery.of(null, null))
+    }
+}
+
+class SaveTextTest {
+    @Test fun urlForSiteOrApp() {
+        assertEquals("https://login.example.com", SaveText.urlFor(" Login.Example.com ", "com.android.chrome"))
+        assertEquals("androidapp://com.example.app", SaveText.urlFor(null, "com.example.app"))
+        assertNull(SaveText.urlFor(null, null))
+    }
+
+    @Test fun suggestedTitle() {
+        assertEquals("example.com", SaveText.suggestedTitle("www.example.com", "Chrome", "com.android.chrome"))
+        assertEquals("Example App", SaveText.suggestedTitle(null, " Example App ", "com.example.app"))
+        assertEquals("com.example.app", SaveText.suggestedTitle(null, null, "com.example.app"))
+    }
+
+    @Test fun lastPasswordWins() {
+        // Change-password form: current, new, confirm.
+        assertEquals("new-one", SaveText.choosePassword(listOf("old-one", "new-one", "new-one")))
+        assertEquals("only", SaveText.choosePassword(listOf("only", "")))
+        assertNull(SaveText.choosePassword(listOf("", "")))
+    }
+
+    @Test fun usernamesCompareLoosely() {
+        assertTrue(SaveText.sameUsername(" Alice@Example.com", "alice@example.com"))
+        assertTrue(SaveText.sameUsername(null, ""))
+        assertFalse(SaveText.sameUsername("alice", "bob"))
     }
 }
 
