@@ -57,6 +57,7 @@ import Testing
         #expect(Importance.infer(kind: .login, tags: ["template:bank"], folder: nil, urls: []) == .critical)
         #expect(Importance.infer(kind: .apiKey, tags: [], folder: nil, urls: []) == .critical)
         #expect(Importance.infer(kind: .login, tags: [], folder: nil, urls: ["https://accounts.google.com"]) == .critical)
+        #expect(Importance.infer(kind: .login, tags: [], folder: nil, urls: ["https://classroom.google.com/u/0"]) == .critical)
         #expect(Importance.infer(kind: .login, tags: [], folder: nil, urls: ["https://signin.aws.amazon.com"]) == .critical)
         #expect(Importance.infer(kind: .login, tags: [], folder: nil, urls: ["https://instagram.com"]) == .normal)
         #expect(Importance.infer(kind: .login, tags: [], folder: nil, urls: []) == .normal)

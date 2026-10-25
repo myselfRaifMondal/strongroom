@@ -221,6 +221,9 @@ Default, all app-side (no FFI, UDL or format change):
   portals keep the employer: "acme (user)"). One account: "<Category>",
   title "<Service> (<username>)". Unknown sites use "Other" and the domain
   ("Other/<domain>" once there are two accounts); no URL: "Other", title kept.
+  There are no extra categories: streaming is filed under Social, telecoms,
+  TV and utility bills under Shopping & Travel, government sign-in portals
+  under Email & Identity, and tax and pension portals under Finance.
   Only `folder` and `title` change, via `update_item`, after a preview; undo
   holds the previous values in memory until lock. New logins get the same
   suggestion in the editor (editable; a second account offers to move the
