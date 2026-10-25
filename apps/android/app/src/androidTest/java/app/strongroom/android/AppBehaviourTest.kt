@@ -10,6 +10,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.strongroom.android.autofill.AutofillUnlockActivity
 import app.strongroom.android.core.VaultFiles
 import app.strongroom.android.core.VaultUnlocker
+import app.strongroom.android.security.GateSeal
+import app.strongroom.android.security.KeystoreGateMac
 import app.strongroom.android.security.SecureClipboard
 import uniffi.strongroom.PasswordRequiredReason
 import uniffi.strongroom.UnlockGate
@@ -65,6 +67,31 @@ class AppBehaviourTest {
             )
         } finally {
             java.io.File(files.gateStatePath(name)).delete()
+            files.gateSealFile(name).delete()
+        }
+    }
+
+    /** Issue #29: a gate state rewritten behind the app's back requires the password. */
+    @Test
+    fun tamperedGateStateRequiresPassword() {
+        val name = "seal-test-${System.nanoTime() % 100000}"
+        val files = VaultFiles(context)
+        val stateFile = java.io.File(files.gateStatePath(name))
+        try {
+            val now = System.currentTimeMillis() / 1000
+            val gate = UnlockGate(files.gateStatePath(name))
+            val seal = GateSeal(stateFile, files.gateSealFile(name), KeystoreGateMac)
+            gate.recordPasswordUnlock(now)
+            seal.reseal()
+            repeat(5) { gate.recordBiometricFailure() }
+            seal.reseal()
+            assertTrue(seal.stateIsIntact())
+            stateFile.writeText("SRGATE1\n$now\n0\n")
+            seal.dropTamperedState()
+            assertEquals(PasswordRequiredReason.PERIODIC_CHECK, gate.check(now, false, false, true))
+        } finally {
+            stateFile.delete()
+            files.gateSealFile(name).delete()
         }
     }
 

@@ -582,6 +582,13 @@ fn unlock_gate_rules() {
         PeriodicCheck,
         "malformed state fails safe"
     );
+    // The platform seals (issue #29) delete a tampered state file and rely
+    // on a missing file requiring the password, also after a failure.
+    g.record_password_unlock(T0 + 40).unwrap();
+    std::fs::remove_file(&p).unwrap();
+    assert_eq!(g.check(T0 + 50, false, false, true), PeriodicCheck);
+    g.record_biometric_failure().unwrap();
+    assert_eq!(g.check(T0 + 50, false, false, true), PeriodicCheck);
     let _ = std::fs::remove_file(&p);
 }
 

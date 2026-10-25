@@ -58,7 +58,7 @@ public static class AppServices
         main.Closed += (_, _) => Shutdown();
     }
 
-    public static UnlockGate OpenGate() => new(Paths.GateState);
+    public static SealedUnlockGate OpenGate() => new(Paths.GateState, Paths.GateSeal, new DpapiGateSealKey());
 
     public static void RecordPasswordUnlock()
     {

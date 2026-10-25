@@ -6,6 +6,8 @@ public sealed class AppPaths
     public string Root { get; }
     public string VaultFile => Path.Combine(Root, "vault.srdb");
     public string GateState => Path.Combine(Root, "unlock-gate.state");
+    /// <summary>DPAPI seal over <see cref="GateState"/> (see <see cref="SealedUnlockGate"/>).</summary>
+    public string GateSeal => Path.Combine(Root, "unlock-gate.seal");
     public string DeviceWrappedKey => Path.Combine(Root, "device-wrapped.key");
     public string LastPasswordBoot => Path.Combine(Root, "last-password-boot.txt");
 

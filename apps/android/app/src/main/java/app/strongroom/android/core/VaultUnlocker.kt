@@ -4,16 +4,21 @@ import android.content.Context
 import android.util.Log
 import app.strongroom.android.security.DeviceKey
 import app.strongroom.android.security.DeviceKeySupport
+import app.strongroom.android.security.GateSeal
 import app.strongroom.android.security.KeyState
 import app.strongroom.android.security.KeystoreDeviceKeyAgreement
+import app.strongroom.android.security.KeystoreGateMac
 import app.strongroom.android.security.UnlockSignals
 import uniffi.strongroom.PasswordRequiredReason
 import uniffi.strongroom.UnlockGate
 import uniffi.strongroom.Vault
+import java.io.File
 
 /**
  * Per-vault unlock policy: feeds platform signals into the core UnlockGate
- * and owns the device-bound (biometric) unlock material.
+ * and owns the device-bound (biometric) unlock material. The gate state is
+ * sealed with a Keystore HMAC key ([GateSeal]); tampered state requires the
+ * password.
  */
 class VaultUnlocker(context: Context, val name: String) {
     private val files = VaultFiles(context)
@@ -22,6 +27,7 @@ class VaultUnlocker(context: Context, val name: String) {
     private val gate: UnlockGate? = runCatching { UnlockGate(files.gateStatePath(name)) }
         .onFailure { Log.w(TAG, "UnlockGate unavailable: ${it.userMessage()}") }
         .getOrNull()
+    private val seal = GateSeal(File(files.gateStatePath(name)), files.gateSealFile(name), KeystoreGateMac)
 
     val deviceKey: DeviceKey? =
         if (DeviceKeySupport.supported) DeviceKey(context, VaultFiles.deviceKeyAlias(name)) else null
@@ -40,6 +46,7 @@ class VaultUnlocker(context: Context, val name: String) {
         }
         val g = gate ?: return PasswordRequiredReason.NO_BIOMETRIC_KEY
         return runCatching {
+            seal.dropTamperedState()
             g.check(
                 Clock.nowSeconds(),
                 signals.rebootedSinceLastPassword(),
@@ -61,6 +68,7 @@ class VaultUnlocker(context: Context, val name: String) {
     fun recordPasswordUnlock() {
         runCatching { gate?.recordPasswordUnlock(Clock.nowSeconds()) }
             .onFailure { Log.w(TAG, "recordPasswordUnlock: ${it.userMessage()}") }
+        seal.reseal()
         signals.recordPasswordUnlock()
     }
 
@@ -81,7 +89,11 @@ class VaultUnlocker(context: Context, val name: String) {
 
     /** Records a rejected biometric; returns true when the gate now demands the password. */
     fun biometricFailure(): Boolean {
-        runCatching { gate?.recordBiometricFailure() }
+        runCatching {
+            seal.dropTamperedState()
+            gate?.recordBiometricFailure()
+            seal.reseal()
+        }
         return passwordRequiredReason() == PasswordRequiredReason.TOO_MANY_BIOMETRIC_FAILURES
     }
 
@@ -100,7 +112,11 @@ class VaultUnlocker(context: Context, val name: String) {
         val key = deviceKey ?: throw IllegalStateException(DeviceKeySupport.UNSUPPORTED_MESSAGE)
         val blob = files.wrappedKeyFile(name).readBytes()
         val vault = Vault.unlockWithDeviceKey(path, blob, KeystoreDeviceKeyAgreement(key))
-        runCatching { gate?.recordBiometricSuccess() }
+        runCatching {
+            seal.dropTamperedState()
+            gate?.recordBiometricSuccess()
+            seal.reseal()
+        }
         return vault
     }
 
