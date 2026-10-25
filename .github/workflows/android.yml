@@ -7,6 +7,7 @@ on:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/android.yml"
   pull_request:
     paths:
@@ -14,6 +15,7 @@ on:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/android.yml"
   workflow_dispatch:
 
@@ -37,19 +39,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Rust Android targets
+      - name: Rust toolchain (rust-toolchain.toml) + Android targets
         run: |
+          rustup toolchain install
           rustup show active-toolchain
           rustup target add aarch64-linux-android x86_64-linux-android
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: android
 
@@ -68,7 +71,7 @@ jobs:
       - name: Build libstrongroom_ffi.so + Kotlin bindings
         run: apps/android/scripts/build-rust.sh
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
 
       - name: Gradle assembleDebug + unit tests
         working-directory: apps/android
@@ -78,7 +81,7 @@ jobs:
         run: apps/android/scripts/check-no-network.sh apps/android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APKs
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: strongroom-android-debug
           path: |
@@ -88,7 +91,7 @@ jobs:
 
       - name: Unit test reports
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-unit-test-reports
           path: apps/android/app/build/reports/tests/

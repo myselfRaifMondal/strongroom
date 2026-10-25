@@ -21,8 +21,10 @@ GEN="$(mktemp -d)"
 trap 'rm -rf "$GEN"' EXIT
 
 cd "$REPO"
-echo "==> cargo build -p strongroom-ffi --release (-j $JOBS)"
-cargo build -j "$JOBS" -p strongroom-ffi --release
+# --locked: build exactly the crate versions in Cargo.lock (the ones CI tests
+# and audits); fail instead of resolving new ones.
+echo "==> cargo build -p strongroom-ffi --release --locked (-j $JOBS)"
+cargo build -j "$JOBS" -p strongroom-ffi --release --locked
 
 LIB="$TARGET_DIR/release"
 # Snapshot the library now: the bindgen run below rebuilds strongroom-ffi with
@@ -33,7 +35,7 @@ echo "==> uniffi-bindgen generate --language swift"
 # --release so the bindgen binary reuses the release build of the core's
 # dependencies (SQLCipher + vendored OpenSSL) instead of a debug rebuild.
 mkdir -p "$GEN/out"
-cargo run --release -j "$JOBS" -q -p strongroom-ffi --features bindgen --bin uniffi-bindgen -- \
+cargo run --release --locked -j "$JOBS" -q -p strongroom-ffi --features bindgen --bin uniffi-bindgen -- \
     generate --library "$GEN/libstrongroom_ffi.dylib" --language swift --out-dir "$GEN/out"
 
 mkdir -p "$HERE/lib" "$HERE/Sources/StrongroomKit/Generated"

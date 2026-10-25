@@ -13,8 +13,9 @@ GitHub's private **Security → Report a vulnerability** form. See
 
 ## Getting started
 
-You need Rust (stable, installed with [rustup](https://rustup.rs); the
-repository pins the channel in `rust-toolchain.toml`) and
+You need Rust (installed with [rustup](https://rustup.rs); the repository
+pins the exact version in `rust-toolchain.toml` and rustup installs it on
+first use) and
 [uv](https://docs.astral.sh/uv/) for the Python reference implementation.
 
 ```bash
@@ -118,8 +119,8 @@ Questions are welcome in
 
 ```bash
 cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
 (cd reference && uv run python -m vtf_ref.verify ../vectors/ --strict)
 ```
 
@@ -130,6 +131,27 @@ the pull request what you checked by hand.
 Keep pull requests focused, explain *why* in the description, and add tests:
 a negative test for every new rejection path, a vector for every format
 behaviour.
+
+### Bumping the Rust toolchain
+
+Every build uses the exact compiler in `rust-toolchain.toml`, and the fuzz
+targets use the dated nightly in `fuzz/rust-toolchain.toml`. Workflows and
+the platform build scripts read these files; no workflow names a Rust
+version. Dependabot is not set up to bump them. To move to a new compiler:
+
+1. Set `channel` in `rust-toolchain.toml` to the new stable release, for
+   example `"1.100.0"`. Set `channel` in `fuzz/rust-toolchain.toml` to a
+   recent nightly, `"nightly-YYYY-MM-DD"`.
+2. Run the checks above with the new compiler and fix any new clippy or
+   rustfmt findings in the same pull request.
+3. Open a pull request with only the bump and those fixes. Changing
+   `rust-toolchain.toml` runs the app workflows (macOS, Windows, Android and
+   the cross-platform round-trip); changing `fuzz/rust-toolchain.toml` runs
+   a short `fuzz-long.yml`.
+
+The platform build scripts pass `--locked`, so they build exactly the crate
+versions in `Cargo.lock`. Update `Cargo.lock` with `cargo update` in its own
+commit, never as a side effect of a build.
 
 ## Pull request process
 

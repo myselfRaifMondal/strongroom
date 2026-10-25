@@ -18,7 +18,8 @@ for t in "${targets[@]}"; do
     continue
   fi
   before="$(ls "corpus/$t" | wc -l | tr -d ' ')"
-  cargo +nightly fuzz cmin ${triple[@]+"${triple[@]}"} "$t" "corpus/$t" -- -rss_limit_mb=2048
+  # The nightly comes from fuzz/rust-toolchain.toml.
+  cargo fuzz cmin ${triple[@]+"${triple[@]}"} "$t" "corpus/$t" -- -rss_limit_mb=2048
   after="$(ls "corpus/$t" | wc -l | tr -d ' ')"
   echo "minimised $t: $before -> $after inputs"
 done

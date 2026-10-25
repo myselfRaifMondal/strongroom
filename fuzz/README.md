@@ -25,10 +25,11 @@ Each file in `fuzz_targets/` lists the invariants it checks.
 
 ## Running locally
 
-You need nightly Rust and cargo-fuzz:
+You need cargo-fuzz and the dated nightly named in
+`fuzz/rust-toolchain.toml`. Inside `fuzz/`, plain `cargo` uses that nightly:
 
 ```sh
-rustup toolchain install nightly
+(cd fuzz && rustup toolchain install)
 cargo install cargo-fuzz
 ```
 
@@ -38,7 +39,7 @@ committed), then run one target. This example runs for one hour:
 ```sh
 fuzz/seed_corpus.sh
 cd fuzz
-cargo +nightly fuzz run payload_decode corpus/payload_decode -- \
+cargo fuzz run payload_decode corpus/payload_decode -- \
   -max_total_time=3600 -rss_limit_mb=2048 -print_final_stats=1
 ```
 
@@ -47,8 +48,9 @@ Useful options:
 - `-jobs=N -workers=N` runs N fuzzing processes at once. Each one uses
   memory, so keep N small on a laptop.
 - `-max_total_time=0` (or leaving it out) runs until you stop it.
-- `cargo +nightly fuzz coverage <target> corpus/<target>` builds a coverage
-  report for the corpus.
+- `cargo fuzz coverage <target> corpus/<target>` (in `fuzz/`) builds a
+  coverage report for the corpus. It needs `rustup component add
+  llvm-tools-preview` for that nightly.
 
 Long runs grow the corpus with inputs that add little. Minimise it now and
 then; this keeps the smallest set of inputs with the same coverage:
@@ -68,7 +70,8 @@ libFuzzer stops and writes the input to `fuzz/artifacts/<target>/`.
 Reproduce it with:
 
 ```sh
-cargo +nightly fuzz run <target> fuzz/artifacts/<target>/crash-<hash>
+cd fuzz
+cargo fuzz run <target> artifacts/<target>/crash-<hash>
 ```
 
 Do not open a public issue for a crash that might be exploitable (for

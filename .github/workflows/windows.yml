@@ -10,11 +10,17 @@ on:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/windows.yml"
+  # Same paths as push: a PR that changes only Cargo.lock (e.g. Dependabot)
+  # changes the shipped library, so it must build the app too.
   pull_request:
     paths:
       - "apps/windows/**"
       - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
       - ".github/workflows/windows.yml"
   workflow_dispatch:
 
@@ -43,12 +49,14 @@ jobs:
       # Keep LF line endings: vectors/manifest.json and other fixtures are
       # compared byte-for-byte (the repo has no .gitattributes).
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v7
-      - name: Rust toolchain
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain (rust-toolchain.toml)
+        shell: bash
         run: |
+          rustup toolchain install
           rustup show active-toolchain
           rustup target add ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: ${{ matrix.target }}
       - name: Build DLL
@@ -59,7 +67,7 @@ jobs:
         run: |
           $dumpbin = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe -ErrorAction SilentlyContinue | Where-Object FullName -match 'Hostx64\\x64' | Select-Object -First 1
           if ($dumpbin) { & $dumpbin.FullName /exports apps/windows/native/${{ matrix.rid }}/strongroom_ffi.dll | Select-String 'uniffi_strongroom_ffi_fn_' | Measure-Object | ForEach-Object { "exported uniffi fn symbols: $($_.Count)" } }
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-${{ matrix.rid }}
           path: apps/windows/native/${{ matrix.rid }}/strongroom_ffi.dll
@@ -73,14 +81,16 @@ jobs:
       # Keep LF line endings: vectors/manifest.json and other fixtures are
       # compared byte-for-byte (the repo has no .gitattributes).
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v7
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: tests
       - name: cargo test --workspace --release
         env:
           RUST_BACKTRACE: "1"
-        run: cargo test --workspace --release --no-fail-fast
+        run: cargo test --workspace --release --locked --no-fail-fast
 
   bindings:
     name: C# bindings (uniffi-bindgen-cs)
@@ -89,20 +99,23 @@ jobs:
       # Keep LF line endings: vectors/manifest.json and other fixtures are
       # compared byte-for-byte (the repo has no .gitattributes).
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Cache uniffi-bindgen-cs
         id: cache-bindgen
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cargo/bin/uniffi-bindgen-cs.exe
           key: uniffi-bindgen-cs-${{ env.UNIFFI_BINDGEN_CS_TAG }}-windows
+      - name: Rust toolchain (rust-toolchain.toml)
+        if: steps.cache-bindgen.outputs.cache-hit != 'true'
+        run: rustup toolchain install
       - name: Install uniffi-bindgen-cs
         if: steps.cache-bindgen.outputs.cache-hit != 'true'
         run: cargo install uniffi-bindgen-cs --git https://github.com/NordSecurity/uniffi-bindgen-cs --tag "${{ env.UNIFFI_BINDGEN_CS_TAG }}" --locked
       - name: Generate
         shell: pwsh
         run: apps/windows/scripts/gen-bindings.ps1
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bindings-cs
           path: apps/windows/src/Strongroom.Core/Generated/strongroom.cs
@@ -116,19 +129,19 @@ jobs:
       # Keep LF line endings: vectors/manifest.json and other fixtures are
       # compared byte-for-byte (the repo has no .gitattributes).
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "8.0.x"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: native-win-x64
           path: apps/windows/native/win-x64
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: native-win-arm64
           path: apps/windows/native/win-arm64
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: bindings-cs
           path: apps/windows/src/Strongroom.Core/Generated
@@ -204,7 +217,7 @@ jobs:
           Stop-Process -Id $p.Id -Force
           "app process killed"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: strongroom-windows

@@ -1,0 +1,6 @@
+# cargo-fuzz needs nightly. A dated nightly keeps fuzz runs repeatable; it
+# applies to everything run from fuzz/ and overrides the root file there.
+# Bump it together with the root rust-toolchain.toml (CONTRIBUTING.md).
+[toolchain]
+channel = "nightly-2026-10-20"
+profile = "minimal"

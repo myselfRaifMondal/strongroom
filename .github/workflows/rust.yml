@@ -29,35 +29,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: stable
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-      # strongroom-ffi is not yet rustfmt-clean and is owned by another
-      # workstream; switch this to `cargo fmt --all --check` once it is.
+      - name: Rust toolchain (rust-toolchain.toml, with rustfmt + clippy)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: cargo fmt --check
         run: |
-          cargo fmt -p vtf-core -p vault-core --check
+          cargo fmt --all --check
           cargo fmt --manifest-path fuzz/Cargo.toml --check
+      # uniffi's generated scaffolding trips clippy::large_const_arrays; the
+      # allow for it sits on the scaffolding module in strongroom-ffi/src/lib.rs.
       - name: cargo clippy -D warnings
-        run: cargo clippy -p vtf-core -p vault-core --all-targets --locked -- -D warnings
-      # uniffi 0.31's generated scaffolding (included by strongroom-ffi) trips
-      # clippy::large_const_arrays on current stable. The proper fix is an
-      # allow at strongroom-ffi's include_scaffolding! site (FFI owner); until
-      # then only that one lint is relaxed, and only for this crate.
-      - name: cargo clippy -D warnings (strongroom-ffi)
-        run: cargo clippy -p strongroom-ffi --all-targets --locked -- -D warnings -A clippy::large_const_arrays
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
   test:
     name: cargo test --workspace
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: stable
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: cargo test (includes the VTF1 vector suite and property tests)
         run: cargo test --workspace --locked
 
@@ -83,10 +74,10 @@ jobs:
         target: [container_parse, chunk_decrypt, payload_decode]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: nightly
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Rust toolchain (dated nightly from fuzz/rust-toolchain.toml)
+        working-directory: fuzz
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: fuzz
       - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
@@ -99,7 +90,7 @@ jobs:
         # The prebuilt cargo-fuzz is a musl binary and would default to its
         # own triple (ASan cannot link static musl), so name the target.
         run: >-
-          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu
+          cargo fuzz run --target x86_64-unknown-linux-gnu
           ${{ matrix.target }} corpus/${{ matrix.target }} --
           -max_total_time=60 -rss_limit_mb=2048 -print_final_stats=1
       - name: keep crash inputs
@@ -115,6 +106,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
       - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
         with:
           tool: cargo-audit
@@ -144,11 +137,11 @@ jobs:
           - aarch64-apple-ios-sim
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: stable
-          targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install
+          rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: ${{ matrix.target }}
       - run: cargo build --workspace --locked --target ${{ matrix.target }}
@@ -158,11 +151,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: stable
-          targets: aarch64-linux-android, x86_64-linux-android
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install
+          rustup target add aarch64-linux-android x86_64-linux-android
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: android
       - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
@@ -182,11 +175,12 @@ jobs:
         target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: stable
-          targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Rust toolchain (rust-toolchain.toml)
+        shell: bash
+        run: |
+          rustup toolchain install
+          rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: ${{ matrix.target }}
       - run: cargo build --workspace --locked --target ${{ matrix.target }}

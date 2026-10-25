@@ -36,13 +36,15 @@ for abi in $ABIS; do TARGET_ARGS+=(-t "$abi"); done
 RELEASE_ARG=()
 if [ "$PROFILE" = "release" ]; then RELEASE_ARG=(--release); fi
 
+# --locked: build exactly the crate versions in Cargo.lock (the ones CI tests
+# and audits); fail instead of resolving new ones.
 echo "==> cargo ndk ($ABIS, $PROFILE, jobs=$CARGO_BUILD_JOBS)"
 cargo ndk "${TARGET_ARGS[@]}" --platform "$MIN_SDK" \
   -o "$ANDROID_DIR/app/src/main/jniLibs" \
-  build -p strongroom-ffi --lib "${RELEASE_ARG[@]+"${RELEASE_ARG[@]}"}"
+  build --locked -p strongroom-ffi --lib "${RELEASE_ARG[@]+"${RELEASE_ARG[@]}"}"
 
 echo "==> uniffi-bindgen (host) -> Kotlin"
-cargo build -p strongroom-ffi --features bindgen --bin uniffi-bindgen
+cargo build --locked -p strongroom-ffi --features bindgen --bin uniffi-bindgen
 OUT="$ANDROID_DIR/app/build/generated/uniffi/kotlin"
 rm -rf "$OUT"
 mkdir -p "$OUT"
