@@ -163,10 +163,14 @@ Strongroom window or the hotkey, and checked every 15 s and on window
 activation. An interaction after the deadline locks instead of extending
 the session. A lock clears our clipboard secret, closes the overlay and
 open dialogs; an auto-type confirmation open at that moment never types.
+An unlock still running when a lock event arrives (Argon2id or Windows
+Hello, e.g. Enter then close the lid) is discarded: every lock advances a
+lock generation, and an unlock that started in an older generation locks
+and drops its vault instead of showing it.
 Verified in CI only: the message-to-reason mapping, the idle logic, the
-setting, delivery of posted `WM_WTSSESSION_CHANGE` / `WM_POWERBROADCAST`
-messages through the real message window, and that both registrations
-succeed on the runner. Needs real hardware (#16): that Windows actually
+lock-generation check, the setting, delivery of posted
+`WM_WTSSESSION_CHANGE` / `WM_POWERBROADCAST` messages through the real
+message window, and that both registrations succeed on the runner. Needs real hardware (#16): that Windows actually
 sends these messages on Win+L, fast user switching, sleep, hibernate and
 Modern Standby (S0 low-power idle may not send `PBT_APMSUSPEND`; the screen
 lock that usually comes with it still locks), and that the lock finishes

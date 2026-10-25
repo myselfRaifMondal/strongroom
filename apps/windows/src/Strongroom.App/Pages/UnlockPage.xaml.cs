@@ -47,11 +47,13 @@ public sealed partial class UnlockPage : Page
         try
         {
             var path = AppServices.Paths.VaultFile;
+            var generation = AppServices.LockGeneration;
             var vault = await CoreThread.RunAsync(() => Vault.UnlockWithPassword(path, password, secretKey, Clock.Now()));
             AppServices.RecordPasswordUnlock();
             Password.Password = "";
             SecretKey.Password = "";
-            AppServices.SetVault(vault);
+            if (!AppServices.TrySetVault(vault, generation))
+                return; // locked while unlocking: stay locked
             AppServices.Main?.ShowVault();
         }
         catch (Exception ex)
@@ -70,10 +72,12 @@ public sealed partial class UnlockPage : Page
         SetBusy(true);
         try
         {
+            var generation = AppServices.LockGeneration;
             var vault = await CoreThread.RunAsync(() => AppServices.Device.Unlock());
             using (var gate = AppServices.OpenGate())
                 gate.RecordBiometricSuccess();
-            AppServices.SetVault(vault);
+            if (!AppServices.TrySetVault(vault, generation))
+                return; // locked while unlocking: stay locked
             AppServices.Main?.ShowVault();
         }
         catch (Exception ex)

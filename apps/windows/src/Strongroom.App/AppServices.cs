@@ -25,6 +25,7 @@ public static class AppServices
     public static UnlockSignals Signals { get; } = new(Paths.LastPasswordBoot);
     public static DeviceUnlock Device { get; } = new(Paths, new HelloPresence(() => Main?.Hwnd ?? 0));
 
+    private static readonly LockGeneration s_lockGeneration = new();
     private static Vault? s_vault;
     private static QuickAccessWindow? s_overlay;
     private static DispatcherQueueTimer? s_idleTimer;
@@ -32,6 +33,9 @@ public static class AppServices
     public static Vault? Vault => s_vault is { } v && !v.IsLocked() ? v : null;
 
     public static event Action? VaultChanged;
+
+    /// <summary>Take before a slow unlock and pass to <see cref="TrySetVault"/>.</summary>
+    public static long LockGeneration => s_lockGeneration.Current;
 
     public static void Start(MainWindow main)
     {
@@ -127,8 +131,27 @@ public static class AppServices
         VaultChanged?.Invoke();
     }
 
+    /// <summary>
+    /// Installs a vault from an unlock that started at <paramref name="generation"/>.
+    /// If a lock happened meanwhile (Win+L, sleep, user switch), the vault is
+    /// locked and dropped instead, and this returns false.
+    /// </summary>
+    public static bool TrySetVault(Vault vault, long generation)
+    {
+        if (!s_lockGeneration.IsCurrent(generation))
+        {
+            try { vault.Lock(); } catch (Exception) { }
+            vault.Dispose();
+            Diag.Log("unlock: discarded, a lock happened while it ran");
+            return false;
+        }
+        SetVault(vault);
+        return true;
+    }
+
     public static void Lock()
     {
+        s_lockGeneration.Advance();
         Clipboard?.ClearIfOurs();
         if (s_vault is { } v)
         {
@@ -147,6 +170,7 @@ public static class AppServices
         Diag.Log($"auto-lock: {reason}");
         if (s_vault is null && s_overlay is null)
         {
+            s_lockGeneration.Advance(); // an unlock may be running
             Clipboard?.ClearIfOurs();
             return;
         }

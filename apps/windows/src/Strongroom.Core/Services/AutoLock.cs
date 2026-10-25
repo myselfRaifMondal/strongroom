@@ -127,3 +127,20 @@ public sealed class IdleLock
         return false;
     }
 }
+
+/// <summary>
+/// Counts locks so an unlock still running when a lock event arrives is
+/// discarded (OQ-W7). Take a token before the slow unlock; if the generation
+/// moved on by the time it finishes, drop the vault instead of showing it.
+/// </summary>
+public sealed class LockGeneration
+{
+    private long _value;
+
+    public long Current => Interlocked.Read(ref _value);
+
+    /// <summary>Call on every lock, including a lock event while already locked.</summary>
+    public void Advance() => Interlocked.Increment(ref _value);
+
+    public bool IsCurrent(long token) => Current == token;
+}

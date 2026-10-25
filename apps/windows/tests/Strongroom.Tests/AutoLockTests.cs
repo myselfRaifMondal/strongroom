@@ -195,3 +195,24 @@ public class IdleLockTests
     [Fact]
     public void ChecksEvery15Seconds() => Assert.Equal(TimeSpan.FromSeconds(15), IdleLock.CheckInterval);
 }
+
+public class LockGenerationTests
+{
+    [Fact]
+    public void TokenStaysCurrentWithoutALock()
+    {
+        var g = new LockGeneration();
+        var token = g.Current;
+        Assert.True(g.IsCurrent(token));
+    }
+
+    [Fact]
+    public void LockDuringUnlockMakesTokenStale()
+    {
+        var g = new LockGeneration();
+        var token = g.Current;
+        g.Advance(); // e.g. Win+L or sleep while Argon2id runs
+        Assert.False(g.IsCurrent(token));
+        Assert.True(g.IsCurrent(g.Current));
+    }
+}
