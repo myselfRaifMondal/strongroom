@@ -15,7 +15,7 @@ struct TransferSheet: View {
 
     var body: some View {
         SheetScaffold(title: title, subtitle: subtitle, symbol: isExport ? "square.and.arrow.up" : "square.and.arrow.down",
-                      size: CGSize(width: DS.Sheet.medium.width, height: isExport ? 560 : 0)) {
+                      size: DS.Sheet.medium) {
             VStack(alignment: .leading, spacing: DS.Space.l) {
                 if case let .importFile(_, info) = request {
                     if let info {
