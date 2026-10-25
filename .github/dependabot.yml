@@ -21,6 +21,11 @@ updates:
     directory: /apps/android
     schedule: { interval: weekly }
     open-pull-requests-limit: 3
+    ignore:
+      # Newer androidx.core needs compileSdk 37 and AGP 9.1 (PR #11). Upgrade
+      # those together on purpose, then remove this rule.
+      - dependency-name: "androidx.core:core-ktx"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
   - package-ecosystem: nuget
     directory: /apps/windows
     schedule: { interval: weekly }
