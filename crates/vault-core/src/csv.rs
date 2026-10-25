@@ -1,6 +1,11 @@
 //! RFC 4180 CSV parser (hand-written) and the column mappings for exports
 //! from Bitwarden, 1Password, LastPass and Chrome.
 //!
+//! Other exporters use one of these mappings: Apple Passwords, KeePassXC,
+//! Proton Pass and Dashlane read through the 1Password mapping, Firefox
+//! through the Chrome one. The column aliases below exist so that their
+//! notes, TOTP and folder columns are kept.
+//!
 //! Parser rules: fields separated by `,`; records end at CRLF, LF or CR; a
 //! field that starts with `"` is quoted, may contain separators and line
 //! breaks, and escapes `"` as `""`. A leading UTF-8 BOM is ignored. Text
@@ -219,10 +224,14 @@ pub fn items(source: CsvSource, text: &str) -> Result<Vec<ItemData>> {
             let title = cols.idx(&["title", "name"]);
             let url = cols.idx(&["url", "website", "urls", "login_uri"]);
             let user = cols.idx(&["username", "login_username"]);
+            // Proton Pass has both `email` and `username`; often only one is set.
+            let email = cols.idx(&["email"]);
             let pass = cols.idx(&["password", "login_password"]);
-            let otp = cols.idx(&["otpauth", "one-time password", "totp"]);
-            let notes = cols.idx(&["notes", "notesplain"]);
+            let otp = cols.idx(&["otpauth", "one-time password", "totp", "otpsecret"]);
+            let notes = cols.idx(&["notes", "notesplain", "note"]);
             let tags = cols.idx(&["tags"]);
+            // KeePassXC `Group`, Dashlane `category`, Proton Pass `vault`.
+            let folder = cols.idx(&["folder", "group", "category", "vault"]);
             if title.is_none() && url.is_none() {
                 return Err(Error::InvalidInput(
                     "not a 1Password CSV export (missing title/url columns)",
@@ -233,7 +242,15 @@ pub fn items(source: CsvSource, text: &str) -> Result<Vec<ItemData>> {
                 .filter(|r| r.iter().any(|f| !f.trim().is_empty()))
             {
                 let urls = split_list(get(row, url), &[',', '\n']);
-                let (u, p) = (opt(row, user), opt(row, pass));
+                let mut u = opt(row, user);
+                let e = opt(row, email);
+                let mut extra = None;
+                match (&u, e) {
+                    (None, e) => u = e,
+                    (Some(a), Some(b)) if *a != b => extra = Some(b),
+                    _ => {}
+                }
+                let p = opt(row, pass);
                 let kind = if u.is_none() && p.is_none() && urls.is_empty() {
                     ItemKind::SecureNote
                 } else {
@@ -248,7 +265,15 @@ pub fn items(source: CsvSource, text: &str) -> Result<Vec<ItemData>> {
                 d.password = p;
                 d.totp = opt(row, otp);
                 d.notes = opt(row, notes);
+                d.folder = opt(row, folder);
                 d.tags = split_list(get(row, tags), &[';', ',']);
+                if let Some(v) = extra {
+                    d.fields.push(Field {
+                        name: "Email".to_string(),
+                        value: v,
+                        concealed: false,
+                    });
+                }
                 out.push(d);
             }
         }
@@ -294,12 +319,13 @@ pub fn items(source: CsvSource, text: &str) -> Result<Vec<ItemData>> {
             }
         }
         CsvSource::Chrome => {
-            let (name, url, user, pass, note) = (
+            let (name, url, user, pass, note, totp) = (
                 cols.idx(&["name"]),
                 cols.idx(&["url"]),
                 cols.idx(&["username"]),
                 cols.idx(&["password"]),
                 cols.idx(&["note", "notes"]),
+                cols.idx(&["totp"]),
             );
             if url.is_none() || pass.is_none() {
                 return Err(Error::InvalidInput(
@@ -316,6 +342,7 @@ pub fn items(source: CsvSource, text: &str) -> Result<Vec<ItemData>> {
                 d.username = opt(row, user);
                 d.password = opt(row, pass);
                 d.notes = opt(row, note);
+                d.totp = opt(row, totp);
                 out.push(d);
             }
         }
@@ -403,5 +430,80 @@ mod tests {
         assert!(i[0].totp.as_deref().unwrap().starts_with("otpauth://totp/"));
         assert_eq!(i[1].notes.as_deref(), Some("a note"));
         assert!(i[1].totp.is_none());
+    }
+
+    /// Firefox (about:logins, Export Logins) has no title column; the
+    /// Chrome mapping takes the title from the host.
+    #[test]
+    fn firefox_export_via_chrome_mapping() {
+        let fx = "\"url\",\"username\",\"password\",\"httpRealm\",\"formActionOrigin\",\"guid\",\"timeCreated\",\"timeLastUsed\",\"timePasswordChanged\"\n\
+                  \"https://login.example.test\",\"erin\",\"pw-fx\",,\"https://login.example.test\",\"{00000000-0000-0000-0000-000000000001}\",\"1700000000000\",\"1700000000000\",\"1700000000000\"\n";
+        let i = items(CsvSource::Chrome, fx).unwrap();
+        assert_eq!(i.len(), 1);
+        assert_eq!(i[0].title, "login.example.test");
+        assert_eq!(i[0].urls, ["https://login.example.test"]);
+        assert_eq!(i[0].username.as_deref(), Some("erin"));
+        assert_eq!(i[0].password.as_deref(), Some("pw-fx"));
+    }
+
+    #[test]
+    fn keepassxc_export_via_onepassword_mapping() {
+        let kp = "\"Group\",\"Title\",\"Username\",\"Password\",\"URL\",\"Notes\",\"TOTP\",\"Icon\",\"Last Modified\",\"Created\"\n\
+                  \"Root/Work\",\"Wiki\",\"frank\",\"pw-kp\",\"https://wiki.example.test\",\"desk 4\",\"otpauth://totp/Wiki:frank?secret=JBSWY3DPEHPK3PXP\",\"0\",\"2024-01-01T00:00:00Z\",\"2024-01-01T00:00:00Z\"\n";
+        let i = items(CsvSource::OnePassword, kp).unwrap();
+        assert_eq!(i.len(), 1);
+        assert_eq!(i[0].title, "Wiki");
+        assert_eq!(i[0].urls, ["https://wiki.example.test"]);
+        assert_eq!(i[0].username.as_deref(), Some("frank"));
+        assert_eq!(i[0].password.as_deref(), Some("pw-kp"));
+        assert_eq!(i[0].notes.as_deref(), Some("desk 4"));
+        assert!(i[0].totp.as_deref().unwrap().starts_with("otpauth://totp/"));
+        assert_eq!(i[0].folder.as_deref(), Some("Root/Work"));
+    }
+
+    #[test]
+    fn proton_pass_export() {
+        let pp = "type,name,url,email,username,password,note,totp,createTime,modifyTime,vault\n\
+                  login,Forum,https://forum.example.test,grace@example.test,,pw-pp1,old account,otpauth://totp/Forum:grace?secret=JBSWY3DPEHPK3PXP,1700000000,1700000000,Personal\n\
+                  login,Shop,https://shop.example.test,heidi@example.test,heidi,pw-pp2,,,1700000000,1700000000,Work\n";
+        let i = items(CsvSource::OnePassword, pp).unwrap();
+        assert_eq!(i.len(), 2);
+        assert_eq!(i[0].title, "Forum");
+        assert_eq!(i[0].urls, ["https://forum.example.test"]);
+        assert_eq!(i[0].username.as_deref(), Some("grace@example.test"));
+        assert_eq!(i[0].password.as_deref(), Some("pw-pp1"));
+        assert_eq!(i[0].notes.as_deref(), Some("old account"));
+        assert!(i[0].totp.as_deref().unwrap().starts_with("otpauth://totp/"));
+        assert_eq!(i[0].folder.as_deref(), Some("Personal"));
+        assert!(i[0].fields.is_empty());
+        // Both set: username wins, the email is kept as a field.
+        assert_eq!(i[1].username.as_deref(), Some("heidi"));
+        assert_eq!(i[1].fields.len(), 1);
+        assert_eq!(i[1].fields[0].name, "Email");
+        assert_eq!(i[1].fields[0].value, "heidi@example.test");
+        assert_eq!(i[1].folder.as_deref(), Some("Work"));
+
+        // Android picks Chrome for this header; notes and TOTP must survive there too.
+        let i = items(CsvSource::Chrome, pp).unwrap();
+        assert_eq!(i[0].title, "Forum");
+        assert_eq!(i[0].notes.as_deref(), Some("old account"));
+        assert!(i[0].totp.as_deref().unwrap().starts_with("otpauth://totp/"));
+        assert_eq!(i[1].username.as_deref(), Some("heidi"));
+    }
+
+    #[test]
+    fn dashlane_export_via_onepassword_mapping() {
+        let dl = "username,username2,username3,title,password,note,url,category,otpSecret\n\
+                  ivan,,,Mail,pw-dl,spare key,https://mail.example.test,Business,JBSWY3DPEHPK3PXP\n";
+        let i = items(CsvSource::OnePassword, dl).unwrap();
+        assert_eq!(i.len(), 1);
+        assert_eq!(i[0].title, "Mail");
+        assert_eq!(i[0].urls, ["https://mail.example.test"]);
+        assert_eq!(i[0].username.as_deref(), Some("ivan"));
+        assert_eq!(i[0].password.as_deref(), Some("pw-dl"));
+        assert_eq!(i[0].notes.as_deref(), Some("spare key"));
+        assert_eq!(i[0].totp.as_deref(), Some("JBSWY3DPEHPK3PXP"));
+        assert!(crate::totp::totp_code(i[0].totp.as_deref().unwrap(), 0).is_ok());
+        assert_eq!(i[0].folder.as_deref(), Some("Business"));
     }
 }
