@@ -28,6 +28,17 @@
             </AppBarButton>
             <AppBarButton x:Name="HelloToggle" Icon="Contact" Label="Windows Hello" Click="OnHelloToggle" />
             <AppBarButton Icon="Find" Label="Quick access (Ctrl+Shift+Space)" Click="OnQuickAccess" />
+            <AppBarButton x:Name="AutoLockButton" Icon="Clock" Label="Auto-lock">
+                <AppBarButton.Flyout>
+                    <MenuFlyout x:Name="AutoLockMenu" Placement="Bottom">
+                        <RadioMenuFlyoutItem Text="Off (still locks on Win+L and sleep)" GroupName="AutoLock" Tag="0" Click="OnAutoLock" />
+                        <RadioMenuFlyoutItem Text="After 5 minutes of inactivity" GroupName="AutoLock" Tag="5" Click="OnAutoLock" />
+                        <RadioMenuFlyoutItem Text="After 15 minutes of inactivity" GroupName="AutoLock" Tag="15" Click="OnAutoLock" />
+                        <RadioMenuFlyoutItem Text="After 30 minutes of inactivity" GroupName="AutoLock" Tag="30" Click="OnAutoLock" />
+                        <RadioMenuFlyoutItem Text="After 60 minutes of inactivity" GroupName="AutoLock" Tag="60" Click="OnAutoLock" />
+                    </MenuFlyout>
+                </AppBarButton.Flyout>
+            </AppBarButton>
             <AppBarButton Icon="Placeholder" Label="Lock" Click="OnLock" />
         </CommandBar>
         <TextBox x:Name="Search" Grid.Row="1" PlaceholderText="Search titles, usernames, URLs, tags, folders" TextChanged="OnSearch" />

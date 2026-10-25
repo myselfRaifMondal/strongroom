@@ -102,6 +102,21 @@ Your vault is saved in this folder:
 C:\Users\<your name>\AppData\Local\Strongroom
 ```
 
+### When Strongroom locks itself
+
+Strongroom locks your vault, clears a password you copied and closes the
+quick-access window:
+
+- when you lock Windows (**Windows key + L**) or switch to another user;
+- before the computer goes to sleep or hibernates;
+- when you sign out;
+- when you click **Lock** or close Strongroom.
+
+It can also lock after a time without use. In the vault screen, click
+**Auto-lock** and choose 5, 15, 30 or 60 minutes. It is **off** at first.
+The time counts from your last key press or click in a Strongroom window, or
+your last use of the quick-access shortcut.
+
 ---
 
 ## 5. Windows Hello (fingerprint, face or PIN) - optional
@@ -222,6 +237,8 @@ The portable copy uses the same vault folder as the installed one.
   password, and please tell us.
 - Tested automatically on Windows 11 / Windows Server 2025 test machines
   (x64 and ARM64). Not yet tested by hand on Windows 10.
+- Locking on Windows + L, sleep and user switching has only been tested
+  automatically, not yet on a real computer.
 - No automatic updates: download new versions yourself.
 - No browser extension and no syncing between devices. To move your vault,
   use **Export VTF** and **Import VTF**.

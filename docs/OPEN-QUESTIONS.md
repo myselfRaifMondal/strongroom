@@ -146,6 +146,33 @@ With phase2/core-vault merged (throwaway branch phase2/windows-with-core),
 The Windows app cannot create or unlock a vault until this is fixed in the
 core. The app, CLI and tests call the core on a 16 MB-stack thread
 (`CoreThread`) as a precaution; that alone does not fix this crash.
+
+## OQ-W7 Windows: lock triggers
+App-side only (no FFI, UDL or format change), mirroring OQ-M10. The
+message-only window (`MessageWindow`) registers with
+`WTSRegisterSessionNotification` and `RegisterSuspendResumeNotification`
+(a message-only window gets no broadcasts). `AppServices.Lock()` runs on:
+`WTS_SESSION_LOCK` (Win+L), `WTS_CONSOLE_DISCONNECT` and
+`WTS_REMOTE_DISCONNECT` (user switching), `WTS_SESSION_LOGOFF`, and
+`PBT_APMSUSPEND` (the message thread waits up to 1.5 s for the UI thread so
+the lock happens before sleep, not on wake); also on the Lock button and on
+close. Idle lock is off by default, choosable as 5/15/30/60 minutes
+(`auto-lock-minutes.txt`, non-secret; unreadable values read as off),
+counted on the monotonic tick count from the last key, click or wheel in a
+Strongroom window or the hotkey, and checked every 15 s and on window
+activation. An interaction after the deadline locks instead of extending
+the session. A lock clears our clipboard secret, closes the overlay and
+open dialogs; an auto-type confirmation open at that moment never types.
+Verified in CI only: the message-to-reason mapping, the idle logic, the
+setting, delivery of posted `WM_WTSSESSION_CHANGE` / `WM_POWERBROADCAST`
+messages through the real message window, and that both registrations
+succeed on the runner. Needs real hardware (#16): that Windows actually
+sends these messages on Win+L, fast user switching, sleep, hibernate and
+Modern Standby (S0 low-power idle may not send `PBT_APMSUSPEND`; the screen
+lock that usually comes with it still locks), and that the lock finishes
+before the machine sleeps. At sign-out the process ends, which drops the
+vault either way.
+
 ## OQ-M1 macOS: HIBP breach check not implemented
 Default: out of scope for the macOS app in Phase 2. The app makes no network
 calls at all. When it is added it follows OQ-6: opt-in, off by default, SHA-1

@@ -5,7 +5,8 @@ namespace Strongroom.Core.Platform;
 
 /// <summary>
 /// A hidden message-only window on its own thread with a message loop. It
-/// owns the clipboard data we place and receives WM_HOTKEY. Work that must
+/// owns the clipboard data we place and receives WM_HOTKEY, session changes
+/// and power notifications. Work that must
 /// run on the window's thread (RegisterHotKey) is marshalled via Invoke.
 /// </summary>
 public sealed class MessageWindow : IDisposable
@@ -23,6 +24,12 @@ public sealed class MessageWindow : IDisposable
 
     /// <summary>Raised on the window thread for every WM_HOTKEY (argument: hotkey id).</summary>
     public event Action<int>? Hotkey;
+
+    /// <summary>Raised on the window thread for every WM_WTSSESSION_CHANGE (argument: WTS_* code).</summary>
+    public event Action<nint>? SessionChange;
+
+    /// <summary>Raised on the window thread for every WM_POWERBROADCAST (argument: PBT_* code).</summary>
+    public event Action<nint>? PowerBroadcast;
 
     public MessageWindow()
     {
@@ -96,6 +103,12 @@ public sealed class MessageWindow : IDisposable
             case User32.WM_HOTKEY:
                 Hotkey?.Invoke((int)wParam);
                 return 0;
+            case User32.WM_WTSSESSION_CHANGE:
+                SessionChange?.Invoke(wParam);
+                return 0;
+            case User32.WM_POWERBROADCAST:
+                PowerBroadcast?.Invoke(wParam);
+                return 1; // TRUE: never deny a power request
             case WM_INVOKE:
                 while (_work.TryDequeue(out var action))
                     action();

@@ -50,6 +50,7 @@ public sealed partial class QuickAccessWindow : Window
             Refresh();
         }
         Activated += (_, _) => Search.Focus(FocusState.Programmatic);
+        AppServices.WatchInteraction(this);
     }
 
     private void Refresh()
@@ -125,7 +126,8 @@ public sealed partial class QuickAccessWindow : Window
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        // A lock while the dialog is open (sleep, Win+L, inactivity) never types.
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary || AppServices.Vault is null)
         {
             fields.Clear();
             return;
