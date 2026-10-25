@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.WindowManager
 import app.strongroom.android.core.AutoLock
+import app.strongroom.android.core.RotationSettings
 import app.strongroom.android.core.Session
 import app.strongroom.android.security.SecureClipboard
 
@@ -26,6 +27,15 @@ class StrongroomApp : Application() {
         )
         set(value) {
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putInt(KEY_AUTO_LOCK, AutoLock.sanitize(value)).apply()
+        }
+
+    /** Rotation reminder settings (Settings, banner snooze). Non-secret. */
+    var rotationSettings: RotationSettings
+        get() = RotationSettings.fromMap(getSharedPreferences(PREFS, MODE_PRIVATE).all)
+        set(value) {
+            val e = getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            value.toMap().forEach { (k, v) -> if (v == null) e.remove(k) else e.putLong(k, v) }
+            e.apply()
         }
 
     override fun onCreate() {

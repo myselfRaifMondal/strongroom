@@ -44,7 +44,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.strongroom.android.StrongroomApp
 import app.strongroom.android.core.Clock
+import app.strongroom.android.core.FolderNode
+import app.strongroom.android.core.FolderOps
+import app.strongroom.android.core.FolderPath
+import app.strongroom.android.core.FolderTree
+import app.strongroom.android.core.RotationSettings
 import app.strongroom.android.core.Session
+import app.strongroom.android.core.VaultAnalysis
 import app.strongroom.android.core.userMessage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -109,26 +115,79 @@ internal val PopupTags = Modifier.semantics { testTagsAsResourceId = true }
 @Composable
 fun ItemListScreen(nav: Nav) {
     val vault = Session.vault ?: return
+    val app = LocalContext.current.applicationContext as StrongroomApp
+    val scope = rememberCoroutineScope()
     val op = rememberOpState()
+    val folderOp = rememberOpState() // rename/move/new folder; kept apart from the list reload
     var query by retain("query") { mutableStateOf("") }
-    var folder by retain("folder") { mutableStateOf<String?>(null) }
+    // Selected folder path; its whole subtree is listed. Empty = all items.
+    var folder by retain("folder") { mutableStateOf<List<String>>(emptyList()) }
     var tag by retain("tag") { mutableStateOf<String?>(null) }
+    var showFolders by retain("showFolders") { mutableStateOf(false) }
+    var expanded by retain("expanded") { mutableStateOf<Set<String>>(emptySet()) }
+    // Folders created in this session that have no items yet (gone on lock).
+    var extraPaths by retain("extraPaths") { mutableStateOf<List<List<String>>>(emptyList()) }
+    var reload by remember { mutableStateOf(0) }
     var items by remember { mutableStateOf<List<ItemSummary>>(emptyList()) }
-    var folders by remember { mutableStateOf<List<String>>(emptyList()) }
+    var tree by remember { mutableStateOf<List<FolderNode>>(emptyList()) }
     var tags by remember { mutableStateOf<List<String>>(emptyList()) }
     var menu by remember { mutableStateOf(false) }
+    var dueCount by remember { mutableStateOf(0) }
+    var rotation by remember { mutableStateOf(app.rotationSettings) }
+    var folderDialog by remember { mutableStateOf<String?>(null) } // "new", "rename", "move"
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(reload) {
         runCatching {
-            folders = core { vault.listFolders() }
+            tree = FolderTree.build(core { vault.search("", null, null) }.map { it.folder }, extraPaths)
             tags = core { vault.listTags() }
         }
-        if (folder != null && folder !in folders) folder = null
+        if (folder.isNotEmpty() && FolderTree.find(folder, tree) == null) folder = emptyList()
         if (tag != null && tag !in tags) tag = null
     }
-    LaunchedEffect(query, folder, tag) {
+    LaunchedEffect(query, folder, tag, reload) {
         delay(150) // debounce typing
-        op.run { items = core { vault.search(query, folder, tag) } }
+        op.run { items = core { vault.search(query, null, tag) }.filter { FolderPath.isInSubtree(it.folder, folder) } }
+    }
+    // Rotation reminder: computed in the background, only the count is kept.
+    LaunchedEffect(Unit) {
+        if (!rotation.isSnoozed(Clock.nowSeconds())) {
+            runCatching { core { VaultAnalysis.ranking(vault, rotation, Clock.nowSeconds()).dueCount } }
+                .onSuccess { dueCount = it }
+        }
+    }
+
+    fun relocate(to: List<String>) {
+        val from = folder
+        scope.launch {
+            folderOp.run {
+                val n = core { VaultAnalysis.relocateFolder(vault, from, to, Clock.nowSeconds()) }
+                extraPaths = FolderOps.relocatePaths(extraPaths, from, to)
+                expanded = emptySet()
+                folder = to
+                reload++
+                folderOp.info = "Folder is now ${folderLabel(to)} ($n item(s) updated)."
+            }
+        }
+    }
+
+    when (folderDialog) {
+        "new" -> FolderNameDialog("New folder in ${folderLabel(folder)}", "", "Create", { folderDialog = null }) { name ->
+            folderDialog = null
+            val path = folder + name
+            if (path !in extraPaths) extraPaths = extraPaths + listOf(path)
+            expanded = expanded + FolderPath.id(folder)
+            folder = path
+            reload++
+            folderOp.info = "Folder created. It is kept once an item is saved in it."
+        }
+        "rename" -> FolderNameDialog("Rename folder", folder.lastOrNull().orEmpty(), "Rename", { folderDialog = null }) { name ->
+            folderDialog = null
+            FolderOps.renamed(folder, name)?.let { if (it != folder) relocate(it) }
+        }
+        "move" -> MoveFolderDialog(folder, tree, { folderDialog = null }) { parent ->
+            folderDialog = null
+            FolderOps.moved(folder, parent)?.let { relocate(it) }
+        }
     }
 
     ScreenScaffold(
@@ -138,6 +197,8 @@ fun ItemListScreen(nav: Nav) {
             TextButton(onClick = { menu = true }, modifier = Modifier.testTag("menu")) { Text("Menu") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, modifier = PopupTags) {
                 fun go(r: Route) { menu = false; nav.push(r) }
+                DropdownMenuItem({ Text("Security Ranking") }, { go(Route.Ranking) }, Modifier.testTag("openRanking"))
+                DropdownMenuItem({ Text("Password Health") }, { go(Route.Health) }, Modifier.testTag("openHealth"))
                 DropdownMenuItem({ Text("Password generator") }, { go(Route.Generator()) }, Modifier.testTag("openGenerator"))
                 DropdownMenuItem({ Text("Export (VTF)") }, { go(Route.Export) }, Modifier.testTag("openExport"))
                 DropdownMenuItem({ Text("Import (VTF)") }, { go(Route.Import) }, Modifier.testTag("openImport"))
@@ -148,38 +209,78 @@ fun ItemListScreen(nav: Nav) {
             TextButton(onClick = { Session.lock(); nav.reset(Route.Vaults) }, modifier = Modifier.testTag("lock")) { Text("Lock") }
         },
         floating = {
-            FloatingActionButton(onClick = { nav.push(Route.Edit(null)) }, modifier = Modifier.testTag("addItem")) {
+            FloatingActionButton(
+                onClick = { nav.push(Route.Edit(null, FolderPath.join(folder))) },
+                modifier = Modifier.testTag("addItem"),
+            ) {
                 Icon(Icons.Filled.Add, contentDescription = "Add item")
             }
         },
     ) {
+        if (dueCount > 0 && !rotation.isSnoozed(Clock.nowSeconds())) {
+            RotationBanner(
+                dueCount,
+                onReview = { nav.push(Route.Ranking) },
+                onSnooze = {
+                    rotation = rotation.copy(snoozedUntil = Clock.nowSeconds() + RotationSettings.SNOOZE_SECONDS)
+                    app.rotationSettings = rotation
+                },
+            )
+        }
         PlainField(query, { query = it }, "Search", "search")
-        if (folders.isNotEmpty() || tags.isNotEmpty()) {
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                folders.forEach { f ->
-                    FilterChip(
-                        selected = folder == f,
-                        onClick = { folder = if (folder == f) null else f },
-                        label = { Text("Folder: $f") },
-                        modifier = Modifier.testTag("folder_$f"),
-                    )
-                }
-                tags.forEach { t ->
-                    FilterChip(
-                        selected = tag == t,
-                        onClick = { tag = if (tag == t) null else t },
-                        label = { Text("#$t") },
-                        modifier = Modifier.testTag("tag_$t"),
-                    )
-                }
+        if (folder.isNotEmpty()) {
+            FolderHeader(
+                folder,
+                onClear = { folder = emptyList() },
+                onNew = { folderDialog = "new" },
+                onRename = { folderDialog = "rename" },
+                onMove = { folderDialog = "move" },
+            )
+        }
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FilterChip(
+                selected = showFolders,
+                onClick = { showFolders = !showFolders },
+                label = { Text(if (showFolders) "Hide folders" else "Folders") },
+                modifier = Modifier.testTag("toggleFolders"),
+            )
+            if (folder.isEmpty()) {
+                FilterChip(
+                    selected = false,
+                    onClick = { folderDialog = "new" },
+                    label = { Text("New folder") },
+                    modifier = Modifier.testTag("newFolder"),
+                )
+            }
+            tags.forEach { t ->
+                FilterChip(
+                    selected = tag == t,
+                    onClick = { tag = if (tag == t) null else t },
+                    label = { Text("#$t") },
+                    modifier = Modifier.testTag("tag_$t"),
+                )
             }
         }
+        if (showFolders) {
+            if (tree.isEmpty()) {
+                Text("No folders yet. Type a folder in an item, or use New folder.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                FolderTreeList(
+                    tree,
+                    selected = folder,
+                    expanded = expanded,
+                    onSelect = { folder = it },
+                    onToggle = { n -> expanded = if (n.id in expanded) expanded - n.id else expanded + n.id },
+                )
+            }
+        }
+        OpStatus(folderOp)
         OpStatus(op)
         if (items.isEmpty() && !op.busy && op.error == null) {
-            val filtered = query.isNotEmpty() || folder != null || tag != null
+            val filtered = query.isNotEmpty() || folder.isNotEmpty() || tag != null
             Text(if (filtered) "No matches." else "No items yet.", modifier = Modifier.testTag("emptyList"))
         }
         items.forEach { s ->
@@ -190,7 +291,12 @@ fun ItemListScreen(nav: Nav) {
                 Column(Modifier.padding(12.dp)) {
                     Text(s.title, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        listOfNotNull(s.kind.label(), s.subtitle, s.folder, if (s.hasTotp) "2FA" else null).joinToString(" - "),
+                        listOfNotNull(
+                            s.kind.label(),
+                            s.subtitle,
+                            FolderPath.components(s.folder).joinToString(" › ").ifEmpty { null },
+                            if (s.hasTotp) "2FA" else null,
+                        ).joinToString(" - "),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -362,7 +468,8 @@ private class ItemDraft {
             urls = urls.lines().map { it.trim() }.filter { it.isNotEmpty() },
             notes = notes.ifBlank { null },
             totp = totp.ifBlank { null },
-            folder = folder.trim().ifEmpty { null },
+            // Written in the canonical "A/B" form, like the macOS app.
+            folder = FolderPath.canonical(folder),
             tags = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() },
             // Template fields left empty on a new item are dropped instead of saved blank.
             fields = fields.filter { it.name.isNotBlank() && (!dropEmptyFields || it.value.isNotEmpty()) }
@@ -373,11 +480,16 @@ private class ItemDraft {
 }
 
 @Composable
-fun ItemEditScreen(nav: Nav, id: String?) {
+fun ItemEditScreen(nav: Nav, id: String?, initialFolder: String? = null) {
     val vault = Session.vault ?: return
     val scope = rememberCoroutineScope()
     val op = rememberOpState()
-    val d = retain("draft") { ItemDraft().apply { loaded = id == null } }
+    val d = retain("draft") {
+        ItemDraft().apply {
+            loaded = id == null
+            if (id == null) folder = initialFolder.orEmpty()
+        }
+    }
     var kindMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(id) {
