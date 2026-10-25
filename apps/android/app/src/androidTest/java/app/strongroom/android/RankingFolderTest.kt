@@ -16,15 +16,18 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import uniffi.strongroom.ItemInput
 import uniffi.strongroom.ItemKind
+import uniffi.strongroom.PasswordPolicy
 import uniffi.strongroom.Vault
+import uniffi.strongroom.generatePassword
 import uniffi.strongroom.generateSecretKey
 import java.io.File
+import java.util.UUID
 
 /**
  * Security Ranking and folder rename/move through the real core (made-up
  * data). Checks that reuse, strength and importance reach the ranking, and
  * that moving a folder rewrites only its subtree without resetting the
- * password age.
+ * password age. Passwords are random per run.
  */
 @RunWith(AndroidJUnit4::class)
 class RankingFolderTest {
@@ -37,7 +40,7 @@ class RankingFolderTest {
     @Before
     fun setUp() {
         dir = File(context.cacheDir, "ranktest-${System.nanoTime()}").apply { mkdirs() }
-        vault = Vault.create(File(dir, "v.srvault").absolutePath, "rank-test-password-1", generateSecretKey(), t0)
+        vault = Vault.create(File(dir, "v.srvault").absolutePath, UUID.randomUUID().toString(), generateSecretKey(), t0)
     }
 
     @After
@@ -55,10 +58,13 @@ class RankingFolderTest {
 
     @Test
     fun rankingAndFolderMove() {
-        val mail = add("Example Mail", "Email & Identity", "Shared-Pass-1", "https://mail.example.test")
-        val game = add("Example Game", "Gaming", "Shared-Pass-1")
-        val weak = add("Weak One", "Social / Friends", "abc")
-        val strong = add("Strong One", "Social/Friends/Close", "q8#Vt2!pLm9@Zx4&Rw7^kD3", totp = "JBSWY3DPEHPK3PXP")
+        val shared = "pw-" + UUID.randomUUID()
+        val mail = add("Example Mail", "Email & Identity", shared, "https://mail.example.test")
+        val game = add("Example Game", "Gaming", shared)
+        val weak = add("Weak One", "Social / Friends", UUID.randomUUID().toString().take(3))
+        val strongPw = generatePassword(PasswordPolicy(24u, true, true, true, true, true))
+        // Only checked for "not blank"; no real TOTP secret.
+        val strong = add("Strong One", "Social/Friends/Close", strongPw, totp = UUID.randomUUID().toString())
         add("A note", "Social", null, kind = ItemKind.SECURE_NOTE)
 
         val r = VaultAnalysis.ranking(vault, RotationSettings(), t0)
