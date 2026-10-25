@@ -41,9 +41,9 @@ struct GeneratorView: View {
     @State private var error: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Generator").font(.headline)
-            Picker("", selection: $mode) {
+        VStack(alignment: .leading, spacing: DS.Space.m) {
+            if onUse != nil { Text("Generate a password").font(.sectionTitle) }
+            Picker("Kind", selection: $mode) {
                 ForEach(Mode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
@@ -54,15 +54,16 @@ struct GeneratorView: View {
                 .textSelection(.enabled)
                 .lineLimit(3)
                 .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
-                .padding(10)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
-            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+                .padding(DS.Space.s + 2)
+                .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: DS.Radius.small))
+                .accessibilityLabel("Generated value")
+            if let error { Text(error).font(.callout).foregroundStyle(.red) }
             StrengthMeter(password: value)
 
             if mode == .password {
                 HStack {
-                    Text("Length \(Int(length))").monospacedDigit().frame(width: 80, alignment: .leading)
-                    Slider(value: $length, in: 8 ... 64, step: 1)
+                    Text("Length \(Int(length))").monospacedDigit().frame(minWidth: 80, alignment: .leading)
+                    Slider(value: $length, in: 8 ... 64, step: 1).accessibilityLabel("Length")
                 }
                 HStack {
                     Toggle("a–z", isOn: $lowercase)
@@ -74,8 +75,8 @@ struct GeneratorView: View {
                 Toggle("Avoid ambiguous characters", isOn: $avoidAmbiguous).toggleStyle(.checkbox)
             } else {
                 HStack {
-                    Text("Words \(Int(words))").monospacedDigit().frame(width: 80, alignment: .leading)
-                    Slider(value: $words, in: 3 ... 12, step: 1)
+                    Text("Words \(Int(words))").monospacedDigit().frame(minWidth: 80, alignment: .leading)
+                    Slider(value: $words, in: 3 ... 12, step: 1).accessibilityLabel("Number of words")
                 }
                 HStack {
                     TextField("Separator", text: $separator).frame(width: 60)

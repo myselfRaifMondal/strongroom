@@ -14,38 +14,42 @@ struct FolderOverviewView: View {
     private var subtreeItems: [ItemSummary] { model.allItems.filter { FolderPath.isInSubtree($0.folder, of: path) } }
     private var directItems: [ItemSummary] { model.allItems.filter { FolderPath.isDirectlyIn($0.folder, path) } }
 
-    private let columns = [GridItem(.adaptive(minimum: 190, maximum: 280), spacing: 12)]
+    private let columns = [GridItem(.adaptive(minimum: 200, maximum: 320), spacing: DS.Space.m, alignment: .top)]
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: DS.Space.xl) {
                 header
                 if !subfolders.isEmpty {
-                    Text("Folders").font(.headline).foregroundStyle(.secondary)
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-                        ForEach(subfolders) { sub in
-                            Button { model.selectFolder(sub.path) } label: { FolderCard(node: sub, stats: stats(for: sub.path)) }
-                                .buttonStyle(.plain)
-                                .dropDestination(for: String.self) { strings, _ in
-                                    let ids = strings.compactMap(DragPayload.itemID)
-                                    guard !ids.isEmpty else { return false }
-                                    model.moveItems(ids, to: sub.path)
-                                    return true
-                                }
+                    section("Folders") {
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: DS.Space.m) {
+                            ForEach(subfolders) { sub in
+                                Button { model.selectFolder(sub.path) } label: { FolderCard(node: sub, stats: stats(for: sub.path)) }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Folder \(sub.name), \(sub.totalCount) items")
+                                    .dropDestination(for: String.self) { strings, _ in
+                                        let ids = strings.compactMap(DragPayload.itemID)
+                                        guard !ids.isEmpty else { return false }
+                                        model.moveItems(ids, to: sub.path)
+                                        return true
+                                    }
+                            }
                         }
                     }
                 }
                 if !directItems.isEmpty {
-                    Text(path.isEmpty ? "Not in a folder" : "Items").font(.headline).foregroundStyle(.secondary)
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
-                        ForEach(directItems, id: \.id) { item in
-                            Button { model.selection = item.id } label: {
-                                ItemCard(item: item, weak: model.weakIDs.contains(item.id),
-                                         reused: model.reusedIDs.contains(item.id), codes: codes[item.id])
+                    section(path.isEmpty ? "Not in a folder" : "Items") {
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: DS.Space.m) {
+                            ForEach(directItems, id: \.id) { item in
+                                Button { model.selection = item.id } label: {
+                                    ItemCard(item: item, weak: model.weakIDs.contains(item.id),
+                                             reused: model.reusedIDs.contains(item.id), codes: codes[item.id])
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(item.title)
+                                .draggable(DragPayload.make(item.id))
+                                .contextMenu { ItemContextMenu(itemId: item.id) }
                             }
-                            .buttonStyle(.plain)
-                            .draggable(DragPayload.make(item.id))
-                            .contextMenu { ItemContextMenu(itemId: item.id) }
                         }
                     }
                 }
@@ -53,39 +57,67 @@ struct FolderOverviewView: View {
                     ContentUnavailableView {
                         Label(path.isEmpty ? "Your vault is empty" : "This folder is empty", systemImage: "folder")
                     } description: {
-                        Text("Add an item here, or drag items onto a folder in the sidebar.")
+                        Text(path.isEmpty ? "Add your first login, card or note, or import from another password manager (File › Import)."
+                                          : "Add an item here, or drag items onto a folder in the sidebar.")
                     } actions: {
                         Button("Add an Item") { model.templatePicker = .init(folder: path) }
+                            .buttonStyle(.borderedProminent)
                     }
                     .frame(maxWidth: .infinity)
                 }
             }
-            .padding(20)
+            .readableWidth(DS.Width.grid)
+            .panePadding()
         }
         .task(id: "\(FolderPath.id(path))-\(model.revision)") {
             codes = model.recoveryCounts(subtreeItems.map(\.id))
         }
     }
 
+    private func section<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: DS.Space.s) {
+            Text(title).font(.sectionTitle).foregroundStyle(.secondary)
+            content()
+        }
+    }
+
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: DS.Space.s) {
             if !path.isEmpty { Breadcrumb(path: path, font: .caption) }
-            HStack(alignment: .firstTextBaseline) {
-                Image(systemName: path.isEmpty ? "tray.full" : "folder").font(.title2).foregroundStyle(.tint)
-                Text(path.last ?? "All Items").font(.title.bold())
-                Spacer()
-                Button { model.templatePicker = .init(folder: path) } label: { Label("Add Item", systemImage: "plus") }
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: DS.Space.m) {
+                    title
+                    Spacer(minLength: DS.Space.m)
+                    addButton
+                }
+                VStack(alignment: .leading, spacing: DS.Space.s) {
+                    title
+                    addButton
+                }
             }
             let s = stats(for: path)
-            HStack(spacing: 8) {
-                Text("\(subtreeItems.count) item\(subtreeItems.count == 1 ? "" : "s")").foregroundStyle(.secondary)
+            FlowRow {
+                Text("\(subtreeItems.count) item\(subtreeItems.count == 1 ? "" : "s")").foregroundStyle(.secondary).font(.callout)
                 HealthBadges(stats: s)
                 if path.isEmpty, let score = model.health?.securityScore {
                     Badge(text: "Security score \(score)", symbol: "checkmark.shield", tint: HealthView.color(for: score))
                 }
             }
-            .font(.callout)
         }
+    }
+
+    private var title: some View {
+        HStack(spacing: DS.Space.s) {
+            Image(systemName: path.isEmpty ? "tray.full" : "folder").font(.title2).foregroundStyle(.tint).accessibilityHidden(true)
+            Text(path.last ?? "All Items").font(.paneTitle).lineLimit(1)
+        }
+    }
+
+    private var addButton: some View {
+        Button { model.templatePicker = .init(folder: path) } label: {
+            Label(path.isEmpty ? "Add Item" : "Add Item Here", systemImage: "plus")
+        }
+        .help(path.isEmpty ? "New item" : "New item in \(path.joined(separator: " › "))")
     }
 
     private func stats(for p: [String]) -> FolderStats {
@@ -101,6 +133,44 @@ struct FolderOverviewView: View {
     }
 }
 
+/// Lays children out left to right and wraps to the next line (badges).
+struct FlowRow: Layout {
+    var spacing: CGFloat = DS.Space.s
+    var lineSpacing: CGFloat = DS.Space.xs
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, line: CGFloat = 0, widest: CGFloat = 0
+        for s in subviews {
+            let size = s.sizeThatFits(.unspecified)
+            if x > 0 && x + size.width > maxWidth {
+                y += line + lineSpacing
+                x = 0
+                line = 0
+            }
+            x += size.width + spacing
+            line = max(line, size.height)
+            widest = max(widest, x - spacing)
+        }
+        return CGSize(width: proposal.width ?? widest, height: y + line)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, line: CGFloat = 0
+        for s in subviews {
+            let size = s.sizeThatFits(.unspecified)
+            if x > bounds.minX && x + size.width > bounds.maxX {
+                y += line + lineSpacing
+                x = bounds.minX
+                line = 0
+            }
+            s.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            line = max(line, size.height)
+        }
+    }
+}
+
 struct FolderStats {
     var weak = 0
     var reused = 0
@@ -112,54 +182,31 @@ struct HealthBadges: View {
     let stats: FolderStats
 
     var body: some View {
-        HStack(spacing: 6) {
-            if stats.reused > 0 { Badge(text: "\(stats.reused) reused", symbol: "arrow.triangle.2.circlepath", tint: .orange) }
-            if stats.weak > 0 { Badge(text: "\(stats.weak) weak", symbol: "exclamationmark.triangle", tint: .orange) }
-            if stats.codesTotal > 0 {
-                Badge(text: "\(stats.codesUnused)/\(stats.codesTotal) codes", symbol: "lifepreserver",
-                      tint: stats.codesUnused <= 2 ? .orange : .secondary)
-            }
+        if stats.reused > 0 { Badge(text: "\(stats.reused) reused", symbol: "arrow.triangle.2.circlepath", tint: .orange) }
+        if stats.weak > 0 { Badge(text: "\(stats.weak) weak", symbol: "exclamationmark.triangle", tint: .orange) }
+        if stats.codesTotal > 0 {
+            Badge(text: "\(stats.codesUnused)/\(stats.codesTotal) codes", symbol: "lifepreserver",
+                  tint: stats.codesUnused <= 2 ? .orange : .secondary)
         }
-    }
-}
-
-struct Badge: View {
-    let text: String
-    let symbol: String
-    var tint: Color = .secondary
-
-    var body: some View {
-        Label(text, systemImage: symbol)
-            .font(.caption.weight(.medium))
-            .labelStyle(.titleAndIcon)
-            .foregroundStyle(tint)
-            .padding(.horizontal, 7).padding(.vertical, 2)
-            .background(tint.opacity(0.12), in: Capsule())
     }
 }
 
 struct FolderCard: View {
     let node: FolderNode
     let stats: FolderStats
-    @State private var hover = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: DS.Space.s) {
             HStack {
-                Image(systemName: "folder.fill").font(.title2).foregroundStyle(.tint)
+                Image(systemName: "folder.fill").font(.title2).foregroundStyle(.tint).accessibilityHidden(true)
                 Spacer()
                 Text("\(node.totalCount)").font(.title3.monospacedDigit().weight(.semibold)).foregroundStyle(.secondary)
             }
             Text(node.name).font(.headline).lineLimit(1)
             Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            HealthBadges(stats: stats)
+            FlowRow(spacing: DS.Space.xs) { HealthBadges(stats: stats) }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 110, alignment: .topLeading)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(hover ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.15)))
-        .contentShape(RoundedRectangle(cornerRadius: 10))
-        .onHover { hover = $0 }
+        .card(minHeight: 112)
     }
 
     private var subtitle: String {
@@ -174,20 +221,22 @@ struct ItemCard: View {
     let weak: Bool
     let reused: Bool
     let codes: (unused: Int, total: Int)?
-    @State private var hover = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: DS.Space.s) {
             HStack {
                 Image(systemName: ItemPresentation.symbol(kind: item.kind, tags: item.tags))
                     .font(.title2).foregroundStyle(.tint).frame(width: 30, alignment: .leading)
+                    .accessibilityHidden(true)
                 Spacer()
-                if ReservedTags.isFavourite(item.tags) { Image(systemName: "star.fill").foregroundStyle(.yellow) }
+                if ReservedTags.isFavourite(item.tags) {
+                    Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Favourite")
+                }
             }
             Text(item.title).font(.headline).lineLimit(1)
             Text(item.subtitle ?? ItemPresentation.typeName(kind: item.kind, tags: item.tags))
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            HStack(spacing: 6) {
+            FlowRow(spacing: DS.Space.xs) {
                 if reused { Badge(text: "Reused", symbol: "arrow.triangle.2.circlepath", tint: .orange) }
                 if weak { Badge(text: "Weak", symbol: "exclamationmark.triangle", tint: .orange) }
                 if let codes {
@@ -197,11 +246,6 @@ struct ItemCard: View {
                 if item.hasTotp { Badge(text: "2FA", symbol: "clock.badge.checkmark") }
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 110, alignment: .topLeading)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(hover ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.15)))
-        .contentShape(RoundedRectangle(cornerRadius: 10))
-        .onHover { hover = $0 }
+        .card(minHeight: 112)
     }
 }

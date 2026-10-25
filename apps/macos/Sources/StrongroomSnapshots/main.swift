@@ -357,7 +357,6 @@ final class Renderer {
     /// a flat stand-in for each glass shape, draw the window, then draw each
     /// glass view's content on top.
     func compose(_ root: NSView, dark: Bool) -> NSBitmapImageRep {
-        NSAppearance.current = Self.appearance(dark)
         let bounds = root.bounds
         var glass: [NSView] = []
         var hidden: [NSView] = []
@@ -606,17 +605,16 @@ final class Harness {
                         await r.sheet(name, view.environmentObject(model), over: backdrop, size: size, dark: dark)
                     }
                 }
-                if r.wants("settings") {
-                    let v = SettingsView().environmentObject(model)
+                // The Settings window does not follow the main window; it is
+                // drawn at its own ideal size (no taller than this screen) and
+                // filed under the screen size it was made for.
+                let tabs: [(String, SettingsView.Tab)] = [("settings", .general), ("settings-security", .security),
+                                                         ("settings-vault", .vault), ("settings-reminders", .reminders)]
+                for (name, tab) in tabs where r.wants(name) {
+                    let v = SettingsView(initialTab: tab).environmentObject(model)
                     let s = await r.idealSize(v, limit: CGSize(width: size.width, height: size.height - 40))
-                    _ = await r.shot("settings", v.frame(width: s.width, height: s.height),
-                                     size: CGSize(width: s.width, height: s.height), dark: dark)
-                    // Keep the size label of the screen it was made for.
-                    let src = opts.out.appendingPathComponent("settings_\(Renderer.sizeName(s))_\(dark ? "dark" : "light").png")
-                    let dst = opts.out.appendingPathComponent("settings_\(Renderer.sizeName(size))_\(dark ? "dark" : "light").png")
-                    if src != dst {
-                        try? FileManager.default.removeItem(at: dst)
-                        try? FileManager.default.moveItem(at: src, to: dst)
+                    if let rep = await r.capture(v.frame(width: s.width, height: s.height), size: s, dark: dark) {
+                        r.write(rep, "\(name)_\(Renderer.sizeName(size))_\(dark ? "dark" : "light")")
                     }
                 }
             }
@@ -648,19 +646,9 @@ final class Harness {
                                                                   VtfInfo(version: 1, passwordSlots: 1, deviceSlots: 1, chunkCount: 3))))),
             ("csv-import", AnyView(CSVImportSheet())),
             ("devices", AnyView(DevicesSheet())),
-            ("generator", AnyView(generatorSheet())),
+            ("generator", AnyView(GeneratorSheet())),
             ("second-vault", AnyView(SecondVaultSheet())),
         ]
-    }
-
-    /// The toolbar's generator sheet (inline in VaultView).
-    func generatorSheet() -> some View {
-        VStack(alignment: .leading) {
-            GeneratorView(onUse: nil)
-            HStack { Spacer(); Button("Done") {}.keyboardShortcut(.defaultAction) }
-        }
-        .padding(20)
-        .frame(width: 460)
     }
 }
 

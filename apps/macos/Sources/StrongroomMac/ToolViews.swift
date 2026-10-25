@@ -21,22 +21,15 @@ struct HealthView: View {
         List(selection: $model.selection) {
             if let h = model.health {
                 Section {
-                    HStack(spacing: 16) {
-                        ZStack {
-                            Circle().stroke(.quaternary, lineWidth: 8)
-                            Circle().trim(from: 0, to: CGFloat(h.securityScore) / 100)
-                                .stroke(Self.color(for: h.securityScore), style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                                .rotationEffect(.degrees(-90))
-                            Text("\(h.securityScore)").font(.title.bold().monospacedDigit())
-                        }
-                        .frame(width: 76, height: 76)
-                        VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: DS.Space.m) {
+                        ScoreRing(score: h.securityScore, size: 56)
+                        VStack(alignment: .leading, spacing: DS.Space.xxs) {
                             Text("Security score").font(.headline)
-                            Text("The share of passwords that are strong, unique and changed within a year.")
+                            Text("Strong, unique and changed within a year.")
                                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         }
                     }
-                    .padding(.vertical, 6)
+                    .padding(.vertical, DS.Space.xs)
                     .selectionDisabled()
                 }
                 group("Reused passwords", "Used by more than one item. Change each to a unique password.",
@@ -61,6 +54,11 @@ struct HealthView: View {
                 ForEach(ids, id: \.self) { id in
                     if let s = model.summary(id) {
                         ItemRow(item: s, showFolder: true).tag(id)
+                            .contextMenu {
+                                Button("Change Password…") { model.requestChangePassword(id) }
+                                Divider()
+                                ItemContextMenu(itemId: id)
+                            }
                     }
                 }
             }
@@ -76,6 +74,74 @@ struct HealthView: View {
     }
 }
 
+/// The score as a ring with the number inside.
+struct ScoreRing: View {
+    let score: UInt8
+    var size: CGFloat = 76
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(.quaternary, lineWidth: size / 9)
+            Circle().trim(from: 0, to: CGFloat(score) / 100)
+                .stroke(HealthView.color(for: score), style: StrokeStyle(lineWidth: size / 9, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Text("\(score)").font((size > 64 ? Font.title : .headline).bold().monospacedDigit())
+        }
+        .frame(width: size, height: size)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Security score \(score) of 100")
+    }
+}
+
+/// The detail pane of Password Health before an item is chosen.
+struct HealthOverview: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: DS.Space.xl) {
+                Label("Password Health", systemImage: "checkmark.shield").font(.paneTitle)
+                if let h = model.health {
+                    HStack(alignment: .center, spacing: DS.Space.xl) {
+                        ScoreRing(score: h.securityScore, size: 96)
+                        VStack(alignment: .leading, spacing: DS.Space.xs) {
+                            Text(verdict(h.securityScore)).font(.title3.weight(.semibold))
+                            HintText("The share of passwords that are strong, unique and changed within a year.")
+                        }
+                    }
+                    LazyVGrid(columns: StatTile.columns, alignment: .leading, spacing: DS.Space.m) {
+                        StatTile(value: "\(h.reusedItemIds.count)", label: "Reused", tint: h.reusedItemIds.isEmpty ? .green : .orange)
+                        StatTile(value: "\(h.weakItemIds.count)", label: "Weak", tint: h.weakItemIds.isEmpty ? .green : .orange)
+                        StatTile(value: "\(h.oldItemIds.count)", label: "Over a year old", tint: h.oldItemIds.isEmpty ? .green : .orange)
+                    }
+                    SectionBox(title: "What to do", symbol: "lightbulb") {
+                        Label("Select an item in the list to review it. Its header has a Change… button that opens the generator.", systemImage: "1.circle")
+                        Label("Fix reused passwords first: one leak opens every account that shares it.", systemImage: "2.circle")
+                        Label("Security Ranking orders every password by risk.", systemImage: "3.circle")
+                        HStack {
+                            Spacer()
+                            Button("Open Security Ranking") { model.sidebar = .ranking; model.selection = nil }
+                        }
+                    }
+                    .symbolRenderingMode(.hierarchical)
+                } else {
+                    HintText("Password health is not available.")
+                }
+            }
+            .readableWidth()
+            .panePadding()
+        }
+    }
+
+    private func verdict(_ score: UInt8) -> String {
+        switch score {
+        case 80...: return "Good"
+        case 50 ..< 80: return "Needs some work"
+        default: return "Needs attention"
+        }
+    }
+}
+
 // MARK: trash
 
 struct TrashView: View {
@@ -85,40 +151,47 @@ struct TrashView: View {
     var body: some View {
         List {
             ForEach(model.trash, id: \.item.id) { entry in
-                HStack(spacing: 10) {
+                HStack(spacing: DS.Space.s + 2) {
                     Image(systemName: ItemPresentation.symbol(kind: entry.item.kind, tags: entry.item.tags))
                         .frame(width: 22).foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 2) {
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: DS.Space.xxs) {
                         Text(entry.item.title).lineLimit(1)
-                        Text("Deleted \(Self.date(entry.deletedAt)) · removed for good \(Self.date(entry.purgeAt))")
+                        Text("Deleted \(Self.date(entry.deletedAt)) · gone \(Self.date(entry.purgeAt))")
                             .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         if let folder = entry.item.folder {
-                            Text(FolderPath.components(folder).joined(separator: " › ")).font(.caption2).foregroundStyle(.tertiary)
+                            Text(FolderPath.components(folder).joined(separator: " › ")).font(.caption).foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
                     }
-                    Spacer()
+                    Spacer(minLength: DS.Space.xs)
                     Button("Restore") { model.restoreFromTrash(entry.item.id) }
+                        .controlSize(.small)
+                        .fixedSize()
                 }
-                .padding(.vertical, 2)
+                .padding(.vertical, DS.Space.xxs)
                 .contextMenu { Button("Restore") { model.restoreFromTrash(entry.item.id) } }
             }
         }
         .overlay {
             if model.trash.isEmpty {
-                ContentUnavailableView("The trash is empty", systemImage: "trash")
+                ContentUnavailableView("The trash is empty", systemImage: "trash",
+                                       description: Text("Items you delete stay here for 180 days."))
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
-                HStack {
-                    Text("Items are deleted for good 180 days after they were trashed.")
+                HStack(spacing: DS.Space.s) {
+                    Text("Deleted for good 180 days after trashing.")
                         .font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Delete Expired") { confirmPurge = true }
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: DS.Space.xs)
+                    Button("Delete Expired…") { confirmPurge = true }
                         .controlSize(.small)
+                        .fixedSize()
                         .disabled(model.trash.isEmpty)
                 }
-                .padding(.horizontal, 12).padding(.vertical, 7)
+                .padding(.horizontal, DS.Space.m).padding(.vertical, DS.Space.s)
                 Divider()
             }
             .background(.bar)
@@ -170,68 +243,63 @@ struct CSVImportSheet: View {
     @State private var trashed = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Import from another password manager").font(.title2.bold())
-            if let summary, let file {
-                Label(AppModel.describe(summary, prefix: "Imported"), systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                deleteWarning
-                HStack {
-                    Button(trashed ? "Moved to the Trash" : "Move “\(file.lastPathComponent)” to the Trash") {
-                        NSWorkspace.shared.recycle([file]) { _, error in
-                            DispatchQueue.main.async {
-                                if error == nil { trashed = true } else { model.errorMessage = "Could not move the file to the Trash." }
+        SheetScaffold(title: "Import from another password manager",
+                      subtitle: summary == nil ? "Export a CSV file from your old password manager, then choose it here." : nil,
+                      symbol: "square.and.arrow.down", size: DS.Sheet.medium) {
+            VStack(alignment: .leading, spacing: DS.Space.l) {
+                if let summary, let file {
+                    Callout(.success, AppModel.describe(summary, prefix: "Imported"))
+                    deleteWarning
+                    HStack {
+                        Button(trashed ? "Moved to the Trash" : "Move “\(file.lastPathComponent)” to the Trash") {
+                            NSWorkspace.shared.recycle([file]) { _, error in
+                                DispatchQueue.main.async {
+                                    if error == nil { trashed = true } else { model.errorMessage = "Could not move the file to the Trash." }
+                                }
                             }
                         }
+                        .disabled(trashed)
+                        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([file]) }
                     }
-                    .disabled(trashed)
-                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([file]) }
-                }
-                if trashed {
-                    Text("Now empty the Trash in Finder so the file is really gone.").font(.caption).foregroundStyle(.secondary)
-                }
-                HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.defaultAction) }
-            } else {
-                Form {
-                    Picker("Exported from", selection: $source) {
-                        ForEach(CsvSource.allCases) { Text($0.name).tag($0) }
+                    if trashed {
+                        HintText("Now empty the Trash in Finder so the file is really gone.")
                     }
-                    Text(source.howTo).font(.caption).foregroundStyle(.secondary)
-                }
-                .formStyle(.grouped)
-                deleteWarning
-                HStack {
-                    if model.busy { ProgressView().controlSize(.small) }
-                    Spacer()
-                    Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                    Button("Choose CSV File and Import…") {
-                        guard let url = model.chooseCSV() else { return }
-                        Task {
-                            if let s = await model.importCSV(source: source, url: url) {
-                                file = url
-                                summary = s
-                            }
+                } else {
+                    VStack(alignment: .leading, spacing: DS.Space.s) {
+                        Picker("Exported from", selection: $source) {
+                            ForEach(CsvSource.allCases) { Text($0.name).tag($0) }
                         }
+                        .fixedSize()
+                        HintText(source.howTo)
                     }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(model.busy)
+                    deleteWarning
                 }
             }
+        } footer: {
+            if summary != nil {
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            } else {
+                if model.busy { ProgressView().controlSize(.small) }
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Choose CSV File and Import…") {
+                    guard let url = model.chooseCSV() else { return }
+                    Task {
+                        if let s = await model.importCSV(source: source, url: url) {
+                            file = url
+                            summary = s
+                        }
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(model.busy)
+            }
         }
-        .padding(20)
-        .frame(width: 500)
     }
 
     private var deleteWarning: some View {
-        Label {
-            Text("A CSV export holds every password in plain text. Delete it as soon as the import is done, empty the Trash, and remove any copy in Downloads or a synced folder.")
-                .fixedSize(horizontal: false, vertical: true)
-        } icon: {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-        }
-        .font(.callout)
-        .padding(12)
-        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        Callout(.warning, "A CSV export holds every password in plain text. Delete it as soon as the import is done, empty the Trash, and remove any copy in Downloads or a synced folder.")
     }
 }
 
@@ -261,23 +329,32 @@ struct DevicesSheet: View {
     @State private var confirmed = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Devices and pairing").font(.title2.bold())
-            HStack(alignment: .top, spacing: 20) {
-                thisMac.frame(width: 260)
-                Divider()
-                VStack(alignment: .leading, spacing: 16) {
+        SheetScaffold(title: "Devices and pairing",
+                      subtitle: "Pairing only exchanges public keys. Exports can then be sealed to paired devices as well as to your master password; a paired device opens them with its own hardware key.",
+                      symbol: "laptopcomputer.and.iphone", size: DS.Sheet.wide) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: DS.Space.xl) {
+                    thisMac.frame(width: 260)
+                    Divider()
+                    VStack(alignment: .leading, spacing: DS.Space.l) {
+                        addDevice
+                        Divider()
+                        pairedList
+                    }
+                    .frame(minWidth: 320)
+                }
+                VStack(alignment: .leading, spacing: DS.Space.l) {
+                    thisMac
+                    Divider()
                     addDevice
                     Divider()
                     pairedList
                 }
             }
-            Text("Pairing only exchanges public keys. Exports can then be sealed to paired devices as well as to your master password; a paired device opens them with its own hardware key.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.defaultAction) }
+        } footer: {
+            Spacer()
+            Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
         }
-        .padding(20)
-        .frame(width: 760)
         .onAppear {
             switch model.thisMacPairing() {
             case let .success(i): info = i
@@ -287,22 +364,21 @@ struct DevicesSheet: View {
     }
 
     private var thisMac: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("This Mac").font(.headline)
+        VStack(alignment: .leading, spacing: DS.Space.s + 2) {
+            Text("This Mac").font(.sectionTitle)
             if let info {
                 if let img = QRCode.image(for: info.payload) {
                     Image(nsImage: img).interpolation(.none).resizable().frame(width: 200, height: 200)
-                        .padding(8).background(.white, in: RoundedRectangle(cornerRadius: 8))
+                        .padding(DS.Space.s).background(.white, in: RoundedRectangle(cornerRadius: DS.Radius.card))
                         .accessibilityLabel("Pairing QR code")
                 }
                 LabeledContent("Fingerprint") {
-                    Text(info.fingerprint).font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                    Text(info.fingerprint).font(.secret).textSelection(.enabled)
                 }
                 Text(info.payload).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                     .lineLimit(4)
                 Button("Copy Pairing Text") { model.copy(info.payload, label: "Pairing text") }
-                Text("Scan the code or paste the text on the other device, then check that both show the same fingerprint.")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HintText("Scan the code or paste the text on the other device, then check that both show the same fingerprint.")
             } else if let infoError {
                 Text("Pairing is unavailable: \(infoError)").foregroundStyle(.secondary)
             } else {
@@ -312,12 +388,12 @@ struct DevicesSheet: View {
     }
 
     private var addDevice: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Add a device").font(.headline)
-            TextField("Name (e.g. Pixel 8)", text: $newName).textFieldStyle(.roundedBorder)
-            TextField("Pairing text from the other device (SR1PAIR:…)", text: $newPayload, axis: .vertical)
+        VStack(alignment: .leading, spacing: DS.Space.s) {
+            Text("Add a device").font(.sectionTitle)
+            TextField("Name", text: $newName, prompt: Text("Name (e.g. Pixel 8)")).textFieldStyle(.roundedBorder)
+            TextField("Pairing text", text: $newPayload, prompt: Text("Pairing text from the other device (SR1PAIR:…)"), axis: .vertical)
                 .textFieldStyle(.roundedBorder)
-                .font(.system(.body, design: .monospaced))
+                .font(.secret)
                 .lineLimit(2 ... 4)
                 .onChange(of: newPayload) { _, text in
                     confirmed = false
@@ -335,7 +411,7 @@ struct DevicesSheet: View {
                 }
                 Toggle("The other device shows exactly this fingerprint", isOn: $confirmed).toggleStyle(.checkbox)
             } else if let parseError {
-                Text(parseError).font(.caption).foregroundStyle(.red)
+                Text(parseError).font(.callout).foregroundStyle(.red)
             }
             HStack {
                 Spacer()
@@ -350,21 +426,22 @@ struct DevicesSheet: View {
     }
 
     private var pairedList: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Paired devices").font(.headline)
+        VStack(alignment: .leading, spacing: DS.Space.s) {
+            Text("Paired devices").font(.sectionTitle)
             if model.pairedDevices.isEmpty {
-                Text("None yet.").foregroundStyle(.secondary)
+                HintText("None yet. Add one above.")
             }
             ForEach(model.pairedDevices) { d in
                 HStack {
-                    Image(systemName: "laptopcomputer.and.iphone").foregroundStyle(.secondary)
+                    Image(systemName: "laptopcomputer.and.iphone").foregroundStyle(.secondary).accessibilityHidden(true)
                     VStack(alignment: .leading) {
                         Text(d.name)
                         Text(d.fingerprint).font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button(role: .destructive) { model.removePairedDevice(d.fingerprint) } label: { Image(systemName: "minus.circle") }
-                        .buttonStyle(.borderless).help("Remove")
+                    IconButton("Remove \(d.name)", systemImage: "minus.circle", help: "Remove", role: .destructive) {
+                        model.removePairedDevice(d.fingerprint)
+                    }
                 }
             }
         }
@@ -391,58 +468,63 @@ struct SecondVaultSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Additional vault").font(.title2.bold())
-            if created {
-                Text("The additional vault is ready. Lock Strongroom and unlock with its password to fill it.")
-                    .fixedSize(horizontal: false, vertical: true)
-                if let generated {
-                    Text("Its Secret Key (shown once):").font(.callout)
-                    Text(generated).font(.system(.title3, design: .monospaced)).textSelection(.enabled)
-                        .padding(10).frame(maxWidth: .infinity).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-                    Button("Copy Secret Key") { model.copy(generated, label: "Secret Key") }
-                    Toggle("I have stored this Secret Key", isOn: $stored)
-                }
-                HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.defaultAction).disabled(generated != nil && !stored) }
-            } else {
-                Text("Creates a second vault on this Mac with a different master password. The unlock screen opens whichever vault matches the password you type, the same way and in the same time for both.")
-                    .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Form {
-                    SecureField("Master password for the additional vault", text: $password)
-                    StrengthMeter(password: password)
-                    SecureField("Confirm", text: $confirm)
-                    if !confirm.isEmpty && confirm != password {
-                        Text("The passwords do not match.").font(.caption).foregroundStyle(.red)
+        SheetScaffold(title: "Additional vault",
+                      subtitle: created ? nil : "Creates a second vault on this Mac with a different master password. The unlock screen opens whichever vault matches the password you type, the same way and in the same time for both.",
+                      symbol: "square.stack.3d.up", size: DS.Sheet.medium) {
+            VStack(alignment: .leading, spacing: DS.Space.l) {
+                if created {
+                    Callout(.success, "The additional vault is ready. Lock Strongroom and unlock with its password to fill it.")
+                    if let generated {
+                        Text("Its Secret Key (shown once):").font(.callout)
+                        Text(generated).font(.system(.title3, design: .monospaced)).textSelection(.enabled)
+                            .padding(DS.Space.s + 2).frame(maxWidth: .infinity)
+                            .background(.quaternary, in: RoundedRectangle(cornerRadius: DS.Radius.card))
+                        Button("Copy Secret Key") { model.copy(generated, label: "Secret Key") }
+                        Toggle("I have stored this Secret Key", isOn: $stored).toggleStyle(.checkbox)
                     }
-                    Toggle("Generate a new Secret Key for it", isOn: $useNewKey)
-                    if !useNewKey {
-                        SecureField("Secret Key to use (SR1-…)", text: $secretKey)
-                        Text("Using your usual Secret Key means only the password differs at the unlock screen.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                .formStyle(.grouped)
-                DataLossWarning()
-                HStack {
-                    if model.busy { ProgressView().controlSize(.small) }
-                    Spacer()
-                    Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                    Button("Create") {
-                        let sk = useNewKey ? generateSecretKey() : secretKey
-                        Task {
-                            if await model.createSecondVault(password: password, secretKey: sk) {
-                                generated = useNewKey ? sk : nil
-                                password = ""; confirm = ""; secretKey = ""
-                                created = true
-                            }
+                } else {
+                    VStack(alignment: .leading, spacing: DS.Space.s) {
+                        SecureField("Master password", text: $password, prompt: Text("Master password for the additional vault"))
+                            .textFieldStyle(.roundedBorder)
+                        StrengthMeter(password: password)
+                        SecureField("Confirm", text: $confirm, prompt: Text("Confirm"))
+                            .textFieldStyle(.roundedBorder)
+                        if !confirm.isEmpty && confirm != password {
+                            Text("The passwords do not match.").font(.callout).foregroundStyle(.red)
                         }
                     }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canCreate)
+                    VStack(alignment: .leading, spacing: DS.Space.s) {
+                        Toggle("Generate a new Secret Key for it", isOn: $useNewKey).toggleStyle(.checkbox)
+                        if !useNewKey {
+                            SecureField("Secret Key", text: $secretKey, prompt: Text("Secret Key to use (SR1-…)"))
+                                .textFieldStyle(.roundedBorder)
+                            HintText("Using your usual Secret Key means only the password differs at the unlock screen.")
+                        }
+                    }
+                    DataLossWarning()
                 }
             }
+        } footer: {
+            if created {
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction).disabled(generated != nil && !stored)
+            } else {
+                if model.busy { ProgressView().controlSize(.small) }
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Create") {
+                    let sk = useNewKey ? generateSecretKey() : secretKey
+                    Task {
+                        if await model.createSecondVault(password: password, secretKey: sk) {
+                            generated = useNewKey ? sk : nil
+                            password = ""; confirm = ""; secretKey = ""
+                            created = true
+                        }
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canCreate)
+            }
         }
-        .padding(20)
-        .frame(width: 500)
     }
 }
