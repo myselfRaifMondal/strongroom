@@ -5,7 +5,13 @@
 #   Strongroom-<ver>-x64-portable.zip, Strongroom-<ver>-arm64-portable.zip,
 #   SHA256SUMS.txt
 #
-# Nothing is published: no GitHub Release is created (that needs the owner).
+# Nothing is published here. release.yml calls this workflow on a v* tag and
+# attaches the files to a draft GitHub Release (docs/RELEASING.md).
+#
+# Signing (#27): when the Azure Trusted Signing secrets and variables exist,
+# Strongroom's own .exe/.dll files and both installers are Authenticode-
+# signed. Without them (forks, pull requests) everything is built unsigned.
+#
 # Everything is self-contained (.NET 8, Windows App SDK, static MSVC CRT in
 # strongroom_ffi.dll), so a fresh Windows 10 1809+/11 PC needs nothing else.
 name: windows-installer
@@ -17,15 +23,30 @@ on:
         description: "Version (e.g. 0.1.0 or 0.2.0-beta.1)"
         required: false
         default: "0.1.0"
+  workflow_call:
+    inputs:
+      version:
+        description: "Version (e.g. 0.1.0 or 0.2.0-beta.1)"
+        type: string
+        required: false
+        default: ""
+    outputs:
+      version:
+        description: "Version the files are named with"
+        value: ${{ jobs.version.outputs.version }}
+      signed:
+        description: "'true' when the binaries and installers were signed"
+        value: ${{ jobs.package.outputs.signed }}
   push:
-    tags: ["v*"]
     branches: ["feature/windows-installer"]
 
 permissions:
   contents: read
 
 concurrency:
-  group: windows-installer-${{ github.ref }}
+  # github.workflow is the caller's name when release.yml calls this file, so
+  # a release run and a manual run do not cancel each other.
+  group: windows-installer-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -43,7 +64,7 @@ jobs:
     steps:
       - id: v
         env:
-          INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_VERSION: ${{ inputs.version }}
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
         run: |
@@ -130,6 +151,13 @@ jobs:
     name: package ${{ matrix.arch }}
     needs: [version, native, bindings]
     runs-on: windows-latest
+    permissions:
+      contents: read
+      # Azure login with OpenID Connect (no stored password). Only used when
+      # signing is configured.
+      id-token: write
+    outputs:
+      signed: ${{ steps.signing.outputs.enabled }}
     strategy:
       fail-fast: false
       matrix:
@@ -190,31 +218,57 @@ jobs:
         shell: pwsh
         run: apps/windows/installer/check-deps.ps1 -Dir apps/windows/out/publish-${{ matrix.arch }} -Machine ${{ matrix.arch }}
 
-      # ------------------------------------------------------------------
-      # Code signing placeholder (DISABLED). There is no certificate yet, so
-      # the binaries and installers are unsigned and SmartScreen warns.
-      # When an Azure Trusted Signing account exists, enable this step (and
-      # the matching one after ISCC below), add the federated-credential
-      # secrets in the repo settings, and grant `id-token: write`.
-      # Nothing here reads a secret today.
-      # ------------------------------------------------------------------
-      - name: Sign binaries (Azure Trusted Signing) - DISABLED placeholder
-        if: ${{ false }}
-        shell: pwsh
-        # To enable: replace this step with azure/trusted-signing-action
-        # (pinned to a release), e.g.
-        #   uses: azure/trusted-signing-action@<version>
-        #   with:
-        #     endpoint: https://<region>.codesigning.azure.net/
-        #     trusted-signing-account-name: <account>
-        #     certificate-profile-name: <profile>
-        #     files-folder: apps/windows/out/publish-${{ matrix.arch }}
-        #     files-folder-filter: exe,dll
-        #     file-digest: SHA256
-        #     timestamp-rfc3161: http://timestamp.acs.microsoft.com
-        #     timestamp-digest: SHA256
-        # and authenticate with azure/login (OIDC; no stored passwords).
-        run: "'signing is not configured'"
+      # Code signing (#27). Runs only when every value below is set; the step
+      # prints only "enabled"/"disabled", never a value. Secrets cannot be
+      # used in `if:` directly, hence this check.
+      - name: Signing configured?
+        id: signing
+        shell: bash
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          SIGNING_ENDPOINT: ${{ vars.WINDOWS_SIGNING_ENDPOINT }}
+          SIGNING_ACCOUNT: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
+          SIGNING_PROFILE: ${{ vars.WINDOWS_SIGNING_PROFILE }}
+        run: |
+          if [ -n "$AZURE_CLIENT_ID" ] && [ -n "$AZURE_TENANT_ID" ] && [ -n "$AZURE_SUBSCRIPTION_ID" ] \
+             && [ -n "$SIGNING_ENDPOINT" ] && [ -n "$SIGNING_ACCOUNT" ] && [ -n "$SIGNING_PROFILE" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"; echo "signing: enabled"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"; echo "signing: disabled (secrets/variables not set), building unsigned"
+          fi
+
+      - name: Azure login (OIDC)
+        if: steps.signing.outputs.enabled == 'true'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign binaries (Azure Trusted Signing)
+        if: steps.signing.outputs.enabled == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.WINDOWS_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.WINDOWS_SIGNING_PROFILE }}
+          # Only Strongroom's own files; the .NET and Windows App SDK files
+          # keep Microsoft's signatures.
+          files: |
+            ${{ github.workspace }}\apps\windows\out\publish-${{ matrix.arch }}\Strongroom.exe
+            ${{ github.workspace }}\apps\windows\out\publish-${{ matrix.arch }}\Strongroom.dll
+            ${{ github.workspace }}\apps\windows\out\publish-${{ matrix.arch }}\strongroom-cli.exe
+            ${{ github.workspace }}\apps\windows\out\publish-${{ matrix.arch }}\strongroom-cli.dll
+            ${{ github.workspace }}\apps\windows\out\publish-${{ matrix.arch }}\Strongroom.Core.dll
+            ${{ github.workspace }}\apps\windows\out\publish-${{ matrix.arch }}\strongroom_ffi.dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
 
       - name: Inno Setup
         shell: pwsh
@@ -256,13 +310,40 @@ jobs:
           Compress-Archive -Path $stage -DestinationPath $zip -CompressionLevel Optimal -Force
           Get-ChildItem $dist | Format-Table Name, Length
 
-      - name: Sign installer (Azure Trusted Signing) - DISABLED placeholder
-        if: ${{ false }}
+      # The portable zip was made from the signed publish folder above. The
+      # uninstaller inside the installer stays unsigned (Inno Setup's
+      # SignTool= needs a local signer; see docs/RELEASING.md).
+      - name: Sign installer (Azure Trusted Signing)
+        if: steps.signing.outputs.enabled == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.WINDOWS_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.WINDOWS_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\apps\windows\installer\out
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+
+      - name: Check signatures
+        if: steps.signing.outputs.enabled == 'true'
         shell: pwsh
-        # Same action as above with files-folder: apps/windows/installer/out
-        # and files-folder-filter: exe. Inno Setup can also sign the
-        # uninstaller via SignTool= / SignedUninstaller=yes once a signer exists.
-        run: "'signing is not configured'"
+        run: |
+          $files = @(Get-ChildItem apps/windows/installer/out -Filter *.exe) +
+                   @(Get-Item "apps/windows/out/publish-${{ matrix.arch }}/Strongroom.exe",
+                              "apps/windows/out/publish-${{ matrix.arch }}/strongroom-cli.exe",
+                              "apps/windows/out/publish-${{ matrix.arch }}/strongroom_ffi.dll")
+          $bad = 0
+          foreach ($f in $files) {
+            $sig = Get-AuthenticodeSignature $f.FullName
+            "$($f.Name): $($sig.Status) $($sig.SignerCertificate.Subject)"
+            if ($sig.Status -ne 'Valid') { $bad++ }
+          }
+          if ($bad) { "::error::$bad file(s) without a valid signature"; exit 1 }
 
       - name: Microsoft Defender scan of the installer (informational)
         shell: pwsh
