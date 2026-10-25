@@ -26,6 +26,8 @@
                     </MenuFlyout>
                 </AppBarButton.Flyout>
             </AppBarButton>
+            <AppBarButton Icon="Delete" Label="Trash" Click="OnTrash" />
+            <AppBarButton x:Name="TravelToggle" Icon="World" Label="Travel mode" Click="OnTravelToggle" />
             <AppBarButton x:Name="HelloToggle" Icon="Contact" Label="Windows Hello" Click="OnHelloToggle" />
             <AppBarButton Icon="Find" Label="Quick access (Ctrl+Shift+Space)" Click="OnQuickAccess" />
             <AppBarButton Icon="Placeholder" Label="Lock" Click="OnLock" />

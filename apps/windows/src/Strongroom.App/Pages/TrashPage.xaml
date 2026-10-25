@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Strongroom.App.Pages.TrashPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer>
+        <StackPanel MaxWidth="640" Margin="24" Spacing="12" HorizontalAlignment="Left">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Back" Click="OnBack" />
+                <TextBlock Text="Trash" Style="{StaticResource TitleTextBlockStyle}" />
+            </StackPanel>
+            <TextBlock Text="Trashed items are kept for 180 days, then deleted for good. This also happens automatically on unlock." TextWrapping="Wrap" />
+            <Button x:Name="PurgeButton" Content="Delete expired items now" Click="OnPurge" />
+            <TextBlock x:Name="EmptyText" Text="The trash is empty." Visibility="Collapsed" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <StackPanel x:Name="EntriesPanel" Spacing="8" />
+            <TextBlock x:Name="Error" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

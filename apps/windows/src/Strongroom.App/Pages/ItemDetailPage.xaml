@@ -8,6 +8,7 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button Content="Back" Click="OnBack" />
                 <Button Content="Edit" Click="OnEdit" />
+                <Button Content="History" Click="OnHistory" />
                 <Button Content="Move to trash" Click="OnTrash" />
             </StackPanel>
             <TextBlock x:Name="TitleText" Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap" />

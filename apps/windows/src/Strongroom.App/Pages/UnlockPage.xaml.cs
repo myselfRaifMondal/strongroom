@@ -53,6 +53,7 @@ public sealed partial class UnlockPage : Page
             SecretKey.Password = "";
             AppServices.SetVault(vault);
             AppServices.Main?.ShowVault();
+            await PurgeExpiredTrash(vault);
         }
         catch (Exception ex)
         {
@@ -75,6 +76,7 @@ public sealed partial class UnlockPage : Page
                 gate.RecordBiometricSuccess();
             AppServices.SetVault(vault);
             AppServices.Main?.ShowVault();
+            await PurgeExpiredTrash(vault);
         }
         catch (Exception ex)
         {
@@ -91,6 +93,21 @@ public sealed partial class UnlockPage : Page
         finally
         {
             SetBusy(false);
+        }
+    }
+
+    /// <summary>Items trashed more than 180 days ago are deleted for good on every unlock.</summary>
+    private static async Task PurgeExpiredTrash(Vault vault)
+    {
+        try
+        {
+            var n = await CoreThread.RunAsync(() => vault.PurgeExpiredTrash(Clock.Now()));
+            if (VaultTools.PurgeOnUnlockMessage(n) is { } message)
+                AppServices.Main?.Notify(message);
+        }
+        catch (Exception ex)
+        {
+            Diag.Log($"purge expired trash on unlock failed ({ex.GetType().Name})");
         }
     }
 

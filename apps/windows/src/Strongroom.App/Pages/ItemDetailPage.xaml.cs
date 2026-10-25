@@ -132,11 +132,16 @@ public sealed partial class ItemDetailPage : Page
         if (_id is not null) AppServices.Main?.Navigate(typeof(ItemEditPage), _id);
     }
 
+    private void OnHistory(object sender, RoutedEventArgs e)
+    {
+        if (_id is not null) AppServices.Main?.Navigate(typeof(ItemHistoryPage), _id);
+    }
+
     private async void OnTrash(object sender, RoutedEventArgs e)
     {
         var vault = AppServices.Vault;
         if (vault is null || _id is null || _item is null) return;
-        if (!await Dialogs.Confirm(XamlRoot, "Move to trash?", $"'{_item.Data.Title}' will be moved to the trash, where it can be restored until it is purged.", "Move to trash"))
+        if (!await Dialogs.Confirm(XamlRoot, "Move to trash?", $"'{_item.Data.Title}' stays in the trash for {VaultTools.TrashRetentionDays} days and can be restored from Trash until then.", "Move to trash"))
             return;
         try
         {

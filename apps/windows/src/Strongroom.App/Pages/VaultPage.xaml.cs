@@ -22,6 +22,7 @@ public sealed partial class VaultPage : Page
 
     private void Refresh()
     {
+        UpdateTravelLabel();
         var vault = AppServices.Vault;
         if (vault is null) return;
         try
@@ -53,6 +54,43 @@ public sealed partial class VaultPage : Page
     private void OnNew(object sender, RoutedEventArgs e) => AppServices.Main?.Navigate(typeof(ItemEditPage), null);
 
     private void OnGenerator(object sender, RoutedEventArgs e) => AppServices.Main?.Navigate(typeof(GeneratorPage), null);
+
+    private void OnTrash(object sender, RoutedEventArgs e) => AppServices.Main?.Navigate(typeof(TrashPage), null);
+
+    private void UpdateTravelLabel()
+    {
+        var vault = AppServices.Vault;
+        if (vault is null) return;
+        try
+        {
+            TravelToggle.Label = CoreThread.Run(() => vault.TravelMode()) ? "Travel mode: on" : "Travel mode: off";
+        }
+        catch (Exception)
+        {
+            TravelToggle.Label = "Travel mode";
+        }
+    }
+
+    private async void OnTravelToggle(object sender, RoutedEventArgs e)
+    {
+        var vault = AppServices.Vault;
+        var main = AppServices.Main;
+        if (vault is null || main is null) return;
+        try
+        {
+            bool turnOn = !CoreThread.Run(() => vault.TravelMode());
+            int count = turnOn ? await CoreThread.RunAsync(() => VaultTools.NotTravelSafeCount(vault)) : 0;
+            var (title, message, confirm) = VaultTools.TravelConfirmation(turnOn, count);
+            if (!await Dialogs.Confirm(XamlRoot, title, message, confirm)) return;
+            await CoreThread.RunAsync<object?>(() => { vault.SetTravelMode(turnOn, Clock.Now()); return null; });
+            main.Notify(VaultTools.TravelResult(CoreThread.Run(() => vault.TravelMode())), InfoBarSeverity.Success);
+        }
+        catch (Exception ex)
+        {
+            main.Notify(CoreErrors.Describe(ex), InfoBarSeverity.Error);
+        }
+        Refresh();
+    }
 
     private void OnQuickAccess(object sender, RoutedEventArgs e) => AppServices.ShowQuickAccess();
 

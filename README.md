@@ -69,7 +69,10 @@ notes explain the one-time security prompts on each platform.
   master password is still required regularly.
 - Import from Apple Passwords, Bitwarden, 1Password, LastPass and Chrome.
 - Encrypted export/import between devices (the frozen **VTF** format),
-  device pairing by QR code, travel mode and a decoy vault.
+  device pairing by QR code, travel mode and a decoy vault. The Windows app
+  cannot pair with other devices yet, so it exports and imports with the
+  master password and Secret Key only
+  ([#52](https://github.com/myselfRaifMondal/strongroom/issues/52)).
 - Clipboard auto-clear, screen-capture exclusion, confirmed auto-type and a
   global quick-access overlay on desktop.
 - macOS: keeps running in the menu bar after its window closes (optionally
