@@ -43,6 +43,10 @@ If you find the project useful, a star helps other people find it.
 | Android  | Jetpack Compose (`apps/android`) | Runs on emulator; not yet hand-tested on devices |
 | iOS      | — | Deferred (see [OQ-14](docs/OPEN-QUESTIONS.md)) |
 
+**Download:** [Strongroom 0.1.0 pre-release](https://github.com/myselfRaifMondal/strongroom/releases/tag/v0.1.0)
+for Windows (x64, ARM64), Android and macOS (Apple Silicon). The release
+notes explain the one-time security prompts on each platform.
+
 > **Pre-release software.** It has not had an independent security audit.
 > Publishing the source code lets people review it; it does not by itself
 > make the software secure. Keep a copy of your passwords elsewhere until it
