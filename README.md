@@ -111,14 +111,13 @@ workflows in `.github/workflows/`.
 
 ## Repository layout
 
-The headless CLI (`strongroom-mac-cli`) is documented in [apps/macos/CLI.md](apps/macos/CLI.md): build steps, the environment variables it reads, and one made-up-data example per command.
-
 | Path | What |
 |------|------|
 | `crates/vtf-core` | The VTF transfer format: key hierarchy, chunked AEAD, strict CBOR |
 | `crates/vault-core` | Encrypted local store, items, merge, TOTP, generator, audit, CSV import |
 | `crates/strongroom-ffi` | The stable FFI contract (UniFFI) used by every app |
 | `apps/` | Native apps for macOS, Windows, Android |
+| `apps/macos/CLI.md` | The headless `strongroom-mac-cli`: build, environment variables, one example per command |
 | `vectors/` | Normative test vectors for VTF1 |
 | `reference/` | Independent Python reference implementation |
 | `fuzz/` | cargo-fuzz targets |

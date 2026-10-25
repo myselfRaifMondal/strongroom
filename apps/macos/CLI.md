@@ -2,21 +2,29 @@
 
 A headless harness over the same Swift bindings the macOS app uses. CI and the
 Phase 3 cross-platform VTF round-trip drive it; humans can too. Mirrors the
-Windows `strongroom-cli`.
+Windows `strongroom-cli` (`apps/windows/src/Strongroom.Cli`).
 
 ## Build it
 
+From the repository root:
+
 ```bash
 # 1. the Rust core (libstrongroom_ffi.a + generated Swift bindings)
-scripts/build-core.sh
+apps/macos/scripts/build-core.sh
 
 # 2. the CLI and the app bundle
 apps/macos/scripts/build-app.sh
 ```
 
-The CLI binary lands at `apps/macos/scripts/out/strongroom-mac-cli`. Both
-scripts need a Mac with the Xcode toolchain; `build-core.sh` honours
-`CARGO_JOBS` and `CARGO_TARGET_DIR`.
+The CLI binary lands at `apps/macos/out/strongroom-mac-cli`. Both scripts need
+the Xcode Command Line Tools (full Xcode is not required); `build-core.sh`
+honours `CARGO_JOBS` and `CARGO_TARGET_DIR`.
+
+The examples below assume the binary is on your `PATH`, for example:
+
+```bash
+export PATH="$PWD/apps/macos/out:$PATH"
+```
 
 ## Secrets
 
@@ -29,27 +37,40 @@ to other processes on the machine):
 | `STRONGROOM_SECRET_KEY` | Secret Key for an existing vault or VTF file |
 | `STRONGROOM_ITEM_PASSWORD` | optional per-item password for `add` |
 
+Which commands need what:
+
+| Command | `STRONGROOM_PASSWORD` | `STRONGROOM_SECRET_KEY` |
+| --- | --- | --- |
+| `create` | yes | no (a new key is generated) |
+| `add`, `list`, `export`, `organize`, `ranking` | yes | yes |
+| `import` | yes | yes (the key of the vault that exported the file) |
+| `inspect`, `probe` | no | no |
+| `roundtrip`, `hierarchy`, `organize-demo` | yes | no |
+
+Exit codes: `0` ok, `1` failure, `2` usage error (including a missing
+variable), `3` the core reported `Unsupported`.
+
 ## Commands
 
-Every example below uses made-up test data. `export`/`import`/`inspect`
-operate on the `.vtf` interchange file; `roundtrip`, `hierarchy` and
-`organize-demo` are self-contained scenarios that need nothing but a scratch
-directory.
+Every example below uses made-up test data. Run them in order: the later ones
+use the vault and file the earlier ones create.
 
 ### create
 
 ```bash
 export STRONGROOM_PASSWORD='demo-correct-horse-battery'
 strongroom-mac-cli create --vault /tmp/demo.vault --secret-key-out /tmp/demo.key
+export STRONGROOM_SECRET_KEY="$(cat /tmp/demo.key)"
 ```
 
-Creates an empty vault and writes its Secret Key to a file. Keep the key with
-the vault when you move it.
+Creates an empty vault and writes its Secret Key to a file. Without
+`--secret-key-out` the key is printed instead. Keep the key with the vault when
+you move it: losing either the master password or the Secret Key means
+permanent data loss.
 
 ### add
 
 ```bash
-export STRONGROOM_PASSWORD='demo-correct-horse-battery'
 export STRONGROOM_ITEM_PASSWORD='demo-item-pin-9931'
 strongroom-mac-cli add --vault /tmp/demo.vault \
   --title 'Demo Mail' --username 'demo.user@example.test' \
@@ -57,7 +78,9 @@ strongroom-mac-cli add --vault /tmp/demo.vault \
   --notes 'made-up entry for the docs'
 ```
 
-Adds one item. `--totp` takes a base32 secret; `--notes` is free text.
+Adds one login item and prints its ID. Only `--title` is required. `--totp`
+takes a base32 secret; `--notes` is free text. The item password comes from
+`STRONGROOM_ITEM_PASSWORD`, if set.
 
 ### list
 
@@ -65,26 +88,16 @@ Adds one item. `--totp` takes a base32 secret; `--notes` is free text.
 strongroom-mac-cli list --vault /tmp/demo.vault
 ```
 
-Prints the item titles in the vault. Passwords are not printed.
+Prints `ITEMS: n` and one `TITLE:` line per item. Passwords are not printed.
 
 ### export
 
 ```bash
-export STRONGROOM_PASSWORD='demo-correct-horse-battery'
 strongroom-mac-cli export --vault /tmp/demo.vault --out /tmp/demo.vtf
 ```
 
-Writes the vault as a `.vtf` interchange file.
-
-### import
-
-```bash
-export STRONGROOM_PASSWORD='demo-correct-horse-battery'
-export STRONGROOM_SECRET_KEY="$(cat /tmp/demo.key)"
-strongroom-mac-cli import --in /tmp/demo.vtf --vault /tmp/copy.vault
-```
-
-Reads a `.vtf` file into a vault and prints the imported item titles.
+Writes the vault as a `.vtf` file with one password slot (master password +
+Secret Key).
 
 ### inspect
 
@@ -92,45 +105,22 @@ Reads a `.vtf` file into a vault and prints the imported item titles.
 strongroom-mac-cli inspect --in /tmp/demo.vtf
 ```
 
-Prints the structure of a `.vtf` file (slots, counts, hierarchy) without
-decrypting it into a vault.
+Reads only the unencrypted header and prints the format version, the number of
+password and device slots, and the chunk count. It does not decrypt anything.
 
-### roundtrip
-
-```bash
-strongroom-mac-cli roundtrip --dir /tmp/roundtrip
-```
-
-Self-contained scenario: creates two vaults, adds items, exports from one and
-imports into the other, then verifies the data survived byte-for-byte.
-
-### hierarchy
+### import
 
 ```bash
-strongroom-mac-cli hierarchy --dir /tmp/hierarchy
+strongroom-mac-cli import --in /tmp/demo.vtf
 ```
 
-Self-contained scenario: nested folders and recovery codes go through an
-export/import cycle and are checked on the far side.
+Decrypts the file with `STRONGROOM_PASSWORD` and `STRONGROOM_SECRET_KEY` (those
+of the vault that exported it), imports it into a throwaway vault, prints the
+`IMPORTED:` summary and the item titles, then deletes the throwaway vault.
 
-### probe
-
-```bash
-strongroom-mac-cli probe
-```
-
-Prints whether the FFI links and whether Secure Enclave / Touch ID are
-available on this machine. Handy first call when a build "mysteriously" fails.
-
-### organize
-
-```bash
-export STRONGROOM_PASSWORD='demo-correct-horse-battery'
-strongroom-mac-cli organize --vault /tmp/demo.vault              # plan only
-strongroom-mac-cli organize --vault /tmp/demo.vault --apply yes  # apply the plan
-```
-
-Plans (and optionally applies) the Organize by Service re-grouping.
+With `--vault PATH` it imports into an existing vault instead. That vault is
+opened with the same two variables, so it must already exist and use the same
+master password and Secret Key as the file.
 
 ### ranking
 
@@ -138,7 +128,50 @@ Plans (and optionally applies) the Organize by Service re-grouping.
 strongroom-mac-cli ranking --vault /tmp/demo.vault
 ```
 
-Prints the Security Ranking, worst first. Passwords are not printed.
+Prints the Security Ranking, worst first, plus any clusters of reused
+passwords. Passwords are not printed.
+
+### organize
+
+```bash
+strongroom-mac-cli organize --vault /tmp/demo.vault                          # plan only
+strongroom-mac-cli organize --vault /tmp/demo.vault --scope all --apply yes  # apply the plan
+```
+
+Plans the Organize by Service re-grouping and, with `--apply yes`, applies it.
+By default only items without a folder are considered; `--scope all` includes
+items that are already filed.
+
+### probe
+
+```bash
+strongroom-mac-cli probe
+```
+
+Prints the macOS version, whether the Rust core is linked, whether a Secure
+Enclave key can be created, and whether Touch ID is available. A useful first
+call when a build misbehaves.
+
+### roundtrip
+
+```bash
+strongroom-mac-cli roundtrip --dir /tmp/roundtrip
+```
+
+Self-contained scenario (needs only `STRONGROOM_PASSWORD`): creates a vault
+with three items, exports it, imports the file into a second vault, checks
+that the item titles match, and checks that a wrong Secret Key is rejected.
+Prints `ROUNDTRIP OK` on success.
+
+### hierarchy
+
+```bash
+strongroom-mac-cli hierarchy --dir /tmp/hierarchy
+```
+
+Self-contained scenario (needs only `STRONGROOM_PASSWORD`): nested folders and
+recovery codes go through an export/import cycle and are compared on the far
+side. Prints `HIERARCHY ROUNDTRIP OK` on success.
 
 ### organize-demo
 
@@ -146,6 +179,13 @@ Prints the Security Ranking, worst first. Passwords are not printed.
 strongroom-mac-cli organize-demo --dir /tmp/organize-demo
 ```
 
-Self-contained end-to-end: generates a synthetic Apple Passwords CSV,
-organizes it, ranks it, then undoes everything and verifies the inputs are
-identical to before.
+Self-contained scenario (needs only `STRONGROOM_PASSWORD`): imports a synthetic
+Apple Passwords CSV of fake accounts, organizes and ranks it, then undoes the
+changes and checks that the items are identical to before.
+
+## Clean up
+
+```bash
+rm -rf /tmp/demo.vault /tmp/demo.vault.hdr /tmp/demo.key /tmp/demo.vtf /tmp/roundtrip /tmp/hierarchy /tmp/organize-demo
+unset STRONGROOM_PASSWORD STRONGROOM_SECRET_KEY STRONGROOM_ITEM_PASSWORD
+```
