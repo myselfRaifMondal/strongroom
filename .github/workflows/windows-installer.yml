@@ -93,12 +93,14 @@ jobs:
             rid: win-arm64
     steps:
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v7
-      - name: Rust toolchain
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain (rust-toolchain.toml)
+        shell: bash
         run: |
+          rustup toolchain install
           rustup show active-toolchain
           rustup target add ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: installer-crt-static-${{ matrix.target }}
       - name: Build DLL with the static MSVC runtime
@@ -115,7 +117,7 @@ jobs:
           $crt = $deps | Where-Object { $_ -match '^(vcruntime|msvcp|vcomp|concrt)\d' }
           if ($crt) { "::error::strongroom_ffi.dll still imports the VC++ runtime: $($crt -join ', ')"; exit 1 }
           "OK: strongroom_ffi.dll does not need the Visual C++ Redistributable"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installer-native-${{ matrix.rid }}
           path: apps/windows/native/${{ matrix.rid }}/strongroom_ffi.dll
@@ -127,20 +129,23 @@ jobs:
     runs-on: windows-latest
     steps:
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Cache uniffi-bindgen-cs
         id: cache-bindgen
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cargo/bin/uniffi-bindgen-cs.exe
           key: uniffi-bindgen-cs-${{ env.UNIFFI_BINDGEN_CS_TAG }}-windows
+      - name: Rust toolchain (rust-toolchain.toml)
+        if: steps.cache-bindgen.outputs.cache-hit != 'true'
+        run: rustup toolchain install
       - name: Install uniffi-bindgen-cs
         if: steps.cache-bindgen.outputs.cache-hit != 'true'
         run: cargo install uniffi-bindgen-cs --git https://github.com/NordSecurity/uniffi-bindgen-cs --tag "${{ env.UNIFFI_BINDGEN_CS_TAG }}" --locked
       - name: Generate
         shell: pwsh
         run: apps/windows/scripts/gen-bindings.ps1
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installer-bindings-cs
           path: apps/windows/src/Strongroom.Core/Generated/strongroom.cs
@@ -173,15 +178,15 @@ jobs:
       VERSION_NUMERIC: ${{ needs.version.outputs.numeric }}
     steps:
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "8.0.x"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: installer-native-${{ matrix.rid }}
           path: apps/windows/native/${{ matrix.rid }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: installer-bindings-cs
           path: apps/windows/src/Strongroom.Core/Generated
@@ -246,7 +251,7 @@ jobs:
 
       - name: Azure login (OIDC)
         if: steps.signing.outputs.enabled == 'true'
-        uses: azure/login@v3
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -254,7 +259,7 @@ jobs:
 
       - name: Sign binaries (Azure Trusted Signing)
         if: steps.signing.outputs.enabled == 'true'
-        uses: azure/artifact-signing-action@v2
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           endpoint: ${{ vars.WINDOWS_SIGNING_ENDPOINT }}
           signing-account-name: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
@@ -320,7 +325,7 @@ jobs:
       # SignTool= needs a local signer; see docs/RELEASING.md).
       - name: Sign installer (Azure Trusted Signing)
         if: steps.signing.outputs.enabled == 'true'
-        uses: azure/artifact-signing-action@v2
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           endpoint: ${{ vars.WINDOWS_SIGNING_ENDPOINT }}
           signing-account-name: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
@@ -363,7 +368,7 @@ jobs:
             "MpCmdRun exit code: $LASTEXITCODE (0 = no threat found, 2 = threat found)"
           }
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pkg-${{ matrix.arch }}
           path: apps/windows/installer/out/*
@@ -376,10 +381,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: apps/windows/installer
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pkg-x64
           path: dist
@@ -394,10 +399,10 @@ jobs:
     runs-on: windows-11-arm
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: apps/windows/installer
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: pkg-arm64
           path: dist
@@ -410,7 +415,7 @@ jobs:
     needs: [version, package, smoke-x64, smoke-arm64]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: pkg-*
           path: dist
@@ -421,7 +426,7 @@ jobs:
           cd dist
           sha256sum Strongroom-* | tee SHA256SUMS.txt
           ls -l
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: strongroom-windows-installers
           path: dist/

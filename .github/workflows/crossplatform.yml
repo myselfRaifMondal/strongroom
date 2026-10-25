@@ -12,6 +12,21 @@ name: crossplatform
 on:
   push:
     branches: ["main", "phase3/*"]
+  # Pull requests run it only when something that reaches an exported or
+  # imported file changes: the core, its lockfile or toolchain, an app, or
+  # this pipeline. Docs-only app changes are skipped to save runner time.
+  pull_request:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "apps/macos/**"
+      - "apps/windows/**"
+      - "apps/android/**"
+      - ".github/workflows/crossplatform.yml"
+      - ".github/scripts/android-import-all.sh"
+      - "!**/*.md"
   workflow_dispatch:
 
 permissions:
@@ -34,8 +49,10 @@ jobs:
   macos-export:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: crossplatform-macos
       - name: Build core, bindings, CLI
@@ -60,19 +77,21 @@ jobs:
           "$cli" inspect --in "$out/macos.vtf"
           echo "--- exported titles"; cat "$out/macos.titles.txt"
           shasum -a 256 "$out/macos.vtf"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: vtf-macos, path: "${{ runner.temp }}/vtf/", retention-days: 1, if-no-files-found: error }
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: cli-macos, path: apps/macos/out/strongroom-mac-cli, retention-days: 1, if-no-files-found: error }
 
   # ---------------------------------------------------------------- Windows
   windows-cli:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with: { dotnet-version: "8.0.x" }
-      - uses: Swatinem/rust-cache@v2
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: crossplatform-windows
       - name: Build DLL
@@ -80,7 +99,7 @@ jobs:
         run: apps/windows/scripts/build-native.ps1 -Target x86_64-pc-windows-msvc
       - name: Cache uniffi-bindgen-cs
         id: cache-bindgen
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cargo/bin/uniffi-bindgen-cs.exe
           key: uniffi-bindgen-cs-${{ env.UNIFFI_BINDGEN_CS_TAG }}-windows
@@ -92,16 +111,16 @@ jobs:
         run: |
           apps/windows/scripts/gen-bindings.ps1
           dotnet publish apps/windows/src/Strongroom.Cli/Strongroom.Cli.csproj -c Release -r win-x64 --self-contained false -o apps/windows/out/cli
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: cli-windows, path: apps/windows/out/cli/, retention-days: 1, if-no-files-found: error }
 
   windows-export:
     needs: windows-cli
     runs-on: windows-latest
     steps:
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with: { dotnet-version: "8.0.x" }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: cli-windows, path: cli }
       - name: Export
         shell: bash
@@ -121,7 +140,7 @@ jobs:
           "$cli" inspect --in "$out/windows.vtf"
           echo "--- exported titles"; cat "$out/windows.titles.txt"
           sha256sum "$out/windows.vtf"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: vtf-windows, path: "${{ runner.temp }}/vtf/", retention-days: 1, if-no-files-found: error }
 
   # ---------------------------------------------------------------- Android
@@ -133,11 +152,14 @@ jobs:
       STRONGROOM_RUST_PROFILE: "debug"
       CARGO_BUILD_JOBS: "4"
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with: { distribution: temurin, java-version: "17" }
-      - run: rustup target add x86_64-linux-android
-      - uses: Swatinem/rust-cache@v2
+      - name: Rust toolchain (rust-toolchain.toml) + Android target
+        run: |
+          rustup toolchain install
+          rustup target add x86_64-linux-android
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: crossplatform-android
       - name: Android NDK + cargo-ndk
@@ -148,11 +170,11 @@ jobs:
           cargo ndk --version 2>/dev/null | grep -q "${CARGO_NDK_VERSION}" || cargo install cargo-ndk --locked --version "${CARGO_NDK_VERSION}"
       - name: Build .so + Kotlin bindings
         run: apps/android/scripts/build-rust.sh
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
       - name: Build APKs
         working-directory: apps/android
         run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest -Pstrongroom.skipRust=true
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: apks-android
           retention-days: 1
@@ -166,15 +188,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: apks-android, path: apks }
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
       - name: Export on emulator
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 34
           arch: x86_64
@@ -183,7 +205,7 @@ jobs:
           disable-animations: true
           script: |
             adb install -r -t $(find apks -name app-debug.apk) && adb install -r -t $(find apks -name app-debug-androidTest.apk) && pw="$(openssl rand -hex 24)" && mkdir -p "$RUNNER_TEMP/vtf" && printf '%s' "$pw" > "$RUNNER_TEMP/vtf/android.password.txt" && apps/android/scripts/export-vtf.sh "$RUNNER_TEMP/vtf" "$pw" && sha256sum "$RUNNER_TEMP/vtf/android.vtf"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: vtf-android, path: "${{ runner.temp }}/vtf/", retention-days: 1, if-no-files-found: error }
 
   # ---------------------------------------------------------------- imports
@@ -191,9 +213,9 @@ jobs:
     needs: [macos-export, windows-export, android-export]
     runs-on: macos-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: cli-macos, path: cli }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { pattern: vtf-*, path: vtf, merge-multiple: true }
       - name: Import every platform's file
         shell: bash
@@ -216,11 +238,11 @@ jobs:
     needs: [macos-export, windows-export, android-export]
     runs-on: windows-latest
     steps:
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with: { dotnet-version: "8.0.x" }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: cli-windows, path: cli }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { pattern: vtf-*, path: vtf, merge-multiple: true }
       - name: Import every platform's file
         shell: bash
@@ -243,17 +265,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { name: apks-android, path: apks }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with: { pattern: vtf-*, path: vtf, merge-multiple: true }
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
       - name: Import on emulator
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 34
           arch: x86_64

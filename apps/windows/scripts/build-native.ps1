@@ -28,7 +28,9 @@ try {
         "static CRT: $flagsVar=$flags"
     }
     $cargoArgs = [System.Collections.Generic.List[string]]::new()
-    $cargoArgs.AddRange([string[]]@("build", "-p", "strongroom-ffi", "--lib", "--target", $Target))
+    # --locked: build exactly the crate versions in Cargo.lock (the ones CI
+    # tests and audits); fail instead of resolving new ones.
+    $cargoArgs.AddRange([string[]]@("build", "--locked", "-p", "strongroom-ffi", "--lib", "--target", $Target))
     if ($BuildProfile -eq "release") { $cargoArgs.Add("--release") }
     & cargo $cargoArgs.ToArray()
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed ($LASTEXITCODE)" }

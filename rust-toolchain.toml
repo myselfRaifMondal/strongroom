@@ -1,2 +1,7 @@
+# Exact compiler for every build: CI, the platform build scripts and local
+# work. CI installs it with `rustup toolchain install`. To bump it, see
+# CONTRIBUTING.md ("Bumping the Rust toolchain").
 [toolchain]
-channel = "stable"
+channel = "1.99.1"
+profile = "minimal"
+components = ["rustfmt", "clippy"]

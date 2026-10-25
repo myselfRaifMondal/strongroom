@@ -90,19 +90,20 @@ jobs:
       STRONGROOM_RUST_PROFILE: "release"
       CARGO_BUILD_JOBS: "4"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Rust Android target
+      - name: Rust toolchain (rust-toolchain.toml) + Android target
         run: |
+          rustup toolchain install
           rustup show active-toolchain
           rustup target add aarch64-linux-android
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: android-release
 
@@ -121,7 +122,7 @@ jobs:
       - name: Build libstrongroom_ffi.so (release) + Kotlin bindings
         run: apps/android/scripts/build-rust.sh
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4.4.3
 
       # Prints only "enabled"/"disabled". Secrets cannot be used in `if:`.
       # Pull requests never sign: same-repo PRs receive repository secrets.
@@ -187,7 +188,7 @@ jobs:
           cp "$apk" "dist/$name"
           ls -l dist
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-android
           path: dist/*
@@ -203,9 +204,12 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
       CARGO_JOBS: "3"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: macos-release
 
@@ -295,7 +299,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent apps/macos/out/Strongroom.app "dist/$name"
           ls -l dist
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-macos
           path: dist/*
@@ -313,11 +317,11 @@ jobs:
       PUBLISH: ${{ needs.version.outputs.publish }}
       WINDOWS_SIGNED: ${{ needs.windows.outputs.signed }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: strongroom-windows-installers
           path: windows
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: release-*
           path: dist
@@ -371,7 +375,7 @@ jobs:
           cp notes.md dist/RELEASE-NOTES.md
           cat notes.md
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: strongroom-release-${{ needs.version.outputs.version }}
           path: dist/

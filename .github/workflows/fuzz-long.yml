@@ -2,7 +2,8 @@
 # keeps the corpus between runs in the Actions cache, minimises it with
 # `cargo fuzz cmin`, and fails the job if any input crashes.
 # The 60-second smoke runs on every pull request stay in rust.yml; this
-# workflow runs on a pull request only when it or fuzz/minimise.sh changes.
+# workflow runs on a pull request only when it, fuzz/minimise.sh or the
+# pinned nightly (fuzz/rust-toolchain.toml) changes.
 #
 # Crash inputs are uploaded as a run artifact. This repo is public, so
 # anyone signed in to GitHub can download run artifacts, and anyone can read
@@ -27,6 +28,7 @@ on:
     paths:
       - ".github/workflows/fuzz-long.yml"
       - "fuzz/minimise.sh"
+      - "fuzz/rust-toolchain.toml"
 
 permissions:
   contents: read
@@ -64,10 +66,10 @@ jobs:
             exit 1
           fi
           echo "seconds=$SECONDS_IN" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: nightly
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+      - name: Rust toolchain (dated nightly from fuzz/rust-toolchain.toml)
+        working-directory: fuzz
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: fuzz
       - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
@@ -86,7 +88,7 @@ jobs:
         # libFuzzer exits non-zero on a crash, leak, timeout or OOM, which
         # fails this step and the job.
         run: >-
-          cargo +nightly fuzz run --target "$FUZZ_TRIPLE"
+          cargo fuzz run --target "$FUZZ_TRIPLE"
           ${{ matrix.target }} corpus/${{ matrix.target }} --
           -max_total_time=${{ steps.time.outputs.seconds }}
           -rss_limit_mb=2048 -print_final_stats=1
