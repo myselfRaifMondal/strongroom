@@ -236,30 +236,38 @@ impl Vault {
             .map_err(|_| Error::InvalidInput("password must not be empty"))?;
         let sk = SecretKey::parse(secret_key)
             .map_err(|_| Error::InvalidInput("malformed Secret Key"))?;
-        // The header is the vault: it alone wraps the vault key. A database
-        // with no header cannot be opened and is the leftover of an
-        // interrupted create, so it is replaced.
+        // A vault exists at `path` if anything is there: create never
+        // overwrites a file. A header with no database is the leftover of an
+        // interrupted create (the header is written before the database is
+        // moved into place) and holds no items, so it is removed.
         let hp = header_path(path);
-        if hp.exists() {
+        if fs::symlink_metadata(path).is_ok() {
             return Err(Error::InvalidInput("a vault already exists at this path"));
+        }
+        if fs::symlink_metadata(&hp).is_ok() {
+            fs::remove_file(&hp).map_err(io("remove stale header"))?;
         }
         let key = header::random_key()?;
         let header = Header::seal(&key, &pw, &sk)?;
-        // Order: build the database under a unique name, rename it into
-        // place, sync the directory, then write the header (the commit
-        // point). A crash before the header is in place leaves no header,
-        // so create can be retried.
+        // Order: build the database under a unique name and close it, write
+        // the header, rename the database into place (the commit point),
+        // sync the directory, reopen. A crash before the rename leaves no
+        // database at `path`, so create can be retried.
         let tmp = unique_sibling(path, "creating");
+        let mut wrote_header = false;
         let mut placed = false;
         let result = (|| {
             let conn = open_db(&tmp, &key, true)?;
             conn.execute_batch(SCHEMA).map_err(db("create schema"))?;
             drop(conn);
+            write_atomic(&hp, &header.to_bytes())?;
+            wrote_header = true;
+            // No database is at `path`, so any side file there is stale and
+            // must not be replayed into the new database.
             remove_db_files(path, false);
             fs::rename(&tmp, path).map_err(io("rename"))?;
             placed = true;
             sync_parent_dir(path)?;
-            write_atomic(&hp, &header.to_bytes())?;
             open_db(path, &key, false)
         })();
         match result {
@@ -268,6 +276,8 @@ impl Vault {
                 remove_db_files(&tmp, true);
                 if placed {
                     remove_db_files(path, true);
+                }
+                if wrote_header {
                     let _ = fs::remove_file(&hp);
                 }
                 Err(e)
