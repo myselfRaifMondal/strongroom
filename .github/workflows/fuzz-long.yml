@@ -4,8 +4,12 @@
 # The 60-second smoke runs on every pull request stay in rust.yml; this
 # workflow runs on a pull request only when it or fuzz/minimise.sh changes.
 #
-# Crash inputs are uploaded as a private run artifact. Treat a crash as a
-# possible vulnerability and report it as docs/SECURITY.md says.
+# Crash inputs are uploaded as a run artifact. This repo is public, so
+# anyone signed in to GitHub can download run artifacts, and anyone can read
+# the logs, where libFuzzer also prints small crashing inputs as Base64.
+# Treat a crash as a possible vulnerability: a maintainer should download the
+# input, report it privately as docs/SECURITY.md says, then delete the run's
+# artifact.
 name: fuzz-long
 
 on:
@@ -106,4 +110,4 @@ jobs:
           name: fuzz-long-crashes-${{ matrix.target }}
           path: fuzz/artifacts/
           if-no-files-found: ignore
-          retention-days: 30
+          retention-days: 7

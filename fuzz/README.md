@@ -75,3 +75,9 @@ Do not open a public issue for a crash that might be exploitable (for
 example a panic in a parser or anything in the decrypt path). Report it
 privately as [docs/SECURITY.md](../docs/SECURITY.md) explains. Other
 crashes can go in a normal issue with the reproducer attached.
+
+The `fuzz-long` workflow uploads crash inputs as a run artifact (kept 7
+days). This repo is public: anyone signed in to GitHub can download run
+artifacts, and anyone can read the logs, where libFuzzer also prints small
+crashing inputs as Base64. A maintainer should download the input, report
+it privately, then delete the run's artifact.
