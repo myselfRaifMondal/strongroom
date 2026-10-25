@@ -155,7 +155,8 @@ A crafted `.vtf` or CSV file aimed at crashing or exploiting the importer.
    plain files and are not sealed. Malware running as the user on an unlocked
    device (A2) can make valid seals. Hardware-enforced biometric rate limits
    (Secure Enclave / Keystore / Windows Hello) still apply, and the vault key
-   still needs the hardware ECDH.
+   still needs the hardware ECDH. Replay protection and sealing the signal
+   files are tracked in issue #45.
 4. **HIBP breach check makes a network call** when the user turns it on.
    It sends a 5-character SHA-1 prefix (k-anonymity), and the timing and
    destination reveal that the user runs a breach check. Off by default.
