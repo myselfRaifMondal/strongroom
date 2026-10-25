@@ -10,6 +10,8 @@ public sealed class AppPaths
     public string GateSeal => Path.Combine(Root, "unlock-gate.seal");
     public string DeviceWrappedKey => Path.Combine(Root, "device-wrapped.key");
     public string LastPasswordBoot => Path.Combine(Root, "last-password-boot.txt");
+    /// <summary>Inactivity lock choice in minutes (non-secret, see <see cref="AutoLockSetting"/>).</summary>
+    public string AutoLockMinutes => Path.Combine(Root, "auto-lock-minutes.txt");
 
     public AppPaths(string? root = null)
     {

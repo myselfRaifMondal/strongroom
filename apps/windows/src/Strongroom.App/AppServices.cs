@@ -1,5 +1,8 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Strongroom.Core.Platform;
 using Strongroom.Core.Services;
 using Strongroom.Ffi;
@@ -15,20 +18,29 @@ public static class AppServices
     public static MessageWindow? Messages { get; private set; }
     public static SecureClipboard? Clipboard { get; private set; }
     public static GlobalHotkey? Hotkey { get; private set; }
+    public static SystemLockTriggers? SystemTriggers { get; private set; }
+    public static AutoLockSetting AutoLock { get; } = new(Paths.AutoLockMinutes);
+    public static IdleLock Idle { get; } = new(AutoLock.Load());
     public static AutoType AutoType { get; } = new();
     public static UnlockSignals Signals { get; } = new(Paths.LastPasswordBoot);
     public static DeviceUnlock Device { get; } = new(Paths, new HelloPresence(() => Main?.Hwnd ?? 0));
 
+    private static readonly LockGeneration s_lockGeneration = new();
     private static Vault? s_vault;
     private static QuickAccessWindow? s_overlay;
+    private static DispatcherQueueTimer? s_idleTimer;
 
     public static Vault? Vault => s_vault is { } v && !v.IsLocked() ? v : null;
 
     public static event Action? VaultChanged;
 
+    /// <summary>Take before a slow unlock and pass to <see cref="TrySetVault"/>.</summary>
+    public static long LockGeneration => s_lockGeneration.Current;
+
     public static void Start(MainWindow main)
     {
         Main = main;
+        var dq = DispatcherQueue.GetForCurrentThread();
         try
         {
             Messages = new MessageWindow();
@@ -45,15 +57,37 @@ public static class AppServices
             try
             {
                 Hotkey = new GlobalHotkey(Messages);
-                var dq = DispatcherQueue.GetForCurrentThread();
-                Hotkey.Pressed += () => dq.TryEnqueue(ShowQuickAccess);
+                Hotkey.Pressed += () => dq.TryEnqueue(() =>
+                {
+                    NoteInteraction();
+                    ShowQuickAccess();
+                });
                 Diag.Log("hotkey: Ctrl+Shift+Space registered");
             }
             catch (Exception e)
             {
                 Diag.Log($"hotkey: not registered ({e.Message})");
             }
+
+            try
+            {
+                SystemTriggers = new SystemLockTriggers(Messages);
+                SystemTriggers.LockRequested += reason => LockFromMessageThread(dq, reason);
+                Diag.Log($"lock triggers: session notifications = {SystemTriggers.SessionRegistered}, suspend notifications = {SystemTriggers.SuspendRegistered}");
+            }
+            catch (Exception e)
+            {
+                Diag.Log($"lock triggers: not registered ({e.Message})");
+            }
         }
+
+        s_idleTimer = dq.CreateTimer();
+        s_idleTimer.Interval = IdleLock.CheckInterval;
+        s_idleTimer.Tick += (_, _) => CheckIdle();
+        s_idleTimer.Start();
+        WatchInteraction(main);
+        main.Activated += (_, _) => CheckIdle();
+        Diag.Log($"idle lock: {(Idle.Timeout is { } t ? $"{t.TotalMinutes} min" : "off")}");
 
         main.Closed += (_, _) => Shutdown();
     }
@@ -93,11 +127,31 @@ public static class AppServices
     {
         s_vault?.Dispose();
         s_vault = vault;
+        Idle.Reset();
         VaultChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Installs a vault from an unlock that started at <paramref name="generation"/>.
+    /// If a lock happened meanwhile (Win+L, sleep, user switch), the vault is
+    /// locked and dropped instead, and this returns false.
+    /// </summary>
+    public static bool TrySetVault(Vault vault, long generation)
+    {
+        if (!s_lockGeneration.IsCurrent(generation))
+        {
+            try { vault.Lock(); } catch (Exception) { }
+            vault.Dispose();
+            Diag.Log("unlock: discarded, a lock happened while it ran");
+            return false;
+        }
+        SetVault(vault);
+        return true;
     }
 
     public static void Lock()
     {
+        s_lockGeneration.Advance();
         Clipboard?.ClearIfOurs();
         if (s_vault is { } v)
         {
@@ -106,7 +160,77 @@ public static class AppServices
         }
         s_vault = null;
         s_overlay?.Close();
+        HideDialogs();
         VaultChanged?.Invoke();
+    }
+
+    /// <summary>Lock for a system event or inactivity (OQ-W7). Clears our clipboard secret even when already locked.</summary>
+    public static void AutoLockNow(LockReason reason)
+    {
+        Diag.Log($"auto-lock: {reason}");
+        if (s_vault is null && s_overlay is null)
+        {
+            s_lockGeneration.Advance(); // an unlock may be running
+            Clipboard?.ClearIfOurs();
+            return;
+        }
+        Lock();
+    }
+
+    public static void SetAutoLockMinutes(int minutes)
+    {
+        AutoLock.Save(minutes);
+        Idle.SetMinutes(minutes);
+        Diag.Log($"idle lock: {(minutes == AutoLockSetting.Off ? "off" : $"{minutes} min")}");
+    }
+
+    /// <summary>A key, click or wheel in our windows, or the hotkey. An expired session locks instead of being extended.</summary>
+    public static void NoteInteraction()
+    {
+        if (s_vault is not null && Idle.Interact())
+            AutoLockNow(LockReason.Idle);
+    }
+
+    public static void WatchInteraction(Window window)
+    {
+        if (window.Content is not UIElement root) return;
+        root.PreviewKeyDown += (_, _) => NoteInteraction();
+        root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => NoteInteraction()), true);
+        root.AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler((_, _) => NoteInteraction()), true);
+    }
+
+    private static void CheckIdle()
+    {
+        if (s_vault is not null && Idle.Expired)
+            AutoLockNow(LockReason.Idle);
+    }
+
+    private static void LockFromMessageThread(DispatcherQueue dq, LockReason reason)
+    {
+        var done = new ManualResetEventSlim();
+        if (!dq.TryEnqueue(DispatcherQueuePriority.High, () =>
+            {
+                try { AutoLockNow(reason); }
+                finally { done.Set(); }
+            }))
+            return;
+        // Windows waits for WM_POWERBROADCAST to return before it sleeps
+        // (about 2 s at most), so the lock happens before sleep, not on wake.
+        if (reason == LockReason.Suspend)
+            done.Wait(TimeSpan.FromMilliseconds(1500));
+    }
+
+    /// <summary>Closes open dialogs in the main window (export, import, confirmations): they return "cancel".</summary>
+    private static void HideDialogs()
+    {
+        if (Main?.Content?.XamlRoot is not { } root) return;
+        try
+        {
+            foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(root))
+                if (popup.Child is ContentDialog dialog)
+                    dialog.Hide();
+        }
+        catch (Exception) { }
     }
 
     public static void Copy(string secret) => Clipboard?.Copy(secret);
@@ -127,6 +251,8 @@ public static class AppServices
     private static void Shutdown()
     {
         Lock();
+        s_idleTimer?.Stop();
+        SystemTriggers?.Dispose();
         Hotkey?.Dispose();
         Clipboard?.Dispose();
         Messages?.Dispose();

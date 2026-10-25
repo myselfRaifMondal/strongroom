@@ -17,6 +17,7 @@ public sealed partial class VaultPage : Page
     {
         base.OnNavigatedTo(e);
         Refresh();
+        UpdateAutoLock();
         await UpdateHelloLabel();
     }
 
@@ -57,6 +58,28 @@ public sealed partial class VaultPage : Page
     private void OnQuickAccess(object sender, RoutedEventArgs e) => AppServices.ShowQuickAccess();
 
     private void OnLock(object sender, RoutedEventArgs e) => AppServices.Lock();
+
+    private void UpdateAutoLock()
+    {
+        int minutes = AppServices.AutoLock.Load();
+        foreach (var item in AutoLockMenu.Items.OfType<RadioMenuFlyoutItem>())
+            item.IsChecked = item.Tag as string == minutes.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        AutoLockButton.Label = minutes == AutoLockSetting.Off ? "Auto-lock: off" : $"Auto-lock: {minutes} min";
+    }
+
+    private void OnAutoLock(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioMenuFlyoutItem { Tag: string tag } || !int.TryParse(tag, out var minutes)) return;
+        try
+        {
+            AppServices.SetAutoLockMinutes(minutes);
+        }
+        catch (Exception ex)
+        {
+            AppServices.Main?.Notify($"Could not save the auto-lock setting: {ex.Message}", InfoBarSeverity.Error);
+        }
+        UpdateAutoLock();
+    }
 
     private async void OnExport(object sender, RoutedEventArgs e)
     {

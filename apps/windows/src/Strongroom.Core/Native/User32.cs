@@ -8,6 +8,9 @@ internal static class User32
     public const int WM_APP = 0x8000;
     public const int WM_CLOSE = 0x0010;
     public const int WM_DESTROY = 0x0002;
+    public const int WM_POWERBROADCAST = 0x0218;
+    public const int WM_WTSSESSION_CHANGE = 0x02B1;
+    public const uint DEVICE_NOTIFY_WINDOW_HANDLE = 0x0;
     public static readonly nint HWND_MESSAGE = -3;
 
     public const uint MOD_ALT = 0x0001;
@@ -177,6 +180,23 @@ internal static class User32
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern nint RegisterSuspendResumeNotification(nint hRecipient, uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool UnregisterSuspendResumeNotification(nint handle);
+}
+
+internal static class WtsApi32
+{
+    public const int NOTIFY_FOR_THIS_SESSION = 0;
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    public static extern bool WTSRegisterSessionNotification(nint hwnd, int dwFlags);
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    public static extern bool WTSUnRegisterSessionNotification(nint hwnd);
 }
 
 internal static class Kernel32

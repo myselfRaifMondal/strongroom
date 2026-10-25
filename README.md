@@ -77,6 +77,8 @@ notes explain the one-time security prompts on each platform.
   locks before the Mac sleeps, when the screen locks, on user switching and
   optionally after inactivity; the shortcut then asks for Touch ID or the
   master password and Secret Key.
+- Windows: locks when Windows locks (Win+L), on user switching, before
+  sleep and optionally after inactivity (off by default).
 - No network access at all (an opt-in breach check is planned and will be
   off by default).
 
@@ -114,6 +116,9 @@ Key, your vault cannot be opened by anyone, including the developers.
 - **Windows:** built and tested only on GitHub Actions runners. Windows Hello
   and the TPM-backed key have not been tested on real hardware, and the app
   enforces the Hello prompt rather than the TPM ([OQ-W1](docs/OPEN-QUESTIONS.md)).
+  The app locks on Win+L, user switching, sign-out and before sleep, and
+  optionally after 5-60 minutes without use (off by default); these locks
+  are tested only with simulated messages in CI ([OQ-W7](docs/OPEN-QUESTIONS.md)).
 - **Android:** tested on an emulator only. Autofill on real forms is
   untested, and biometric unlock uses a 10-second authorisation window rather
   than per-use binding ([OQ-9](docs/OPEN-QUESTIONS.md)). Device-key features
