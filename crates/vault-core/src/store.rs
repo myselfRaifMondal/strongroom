@@ -19,8 +19,8 @@ use crate::codec;
 use crate::csv::{self, CsvSource};
 use crate::domain;
 use crate::encoding::{hex, hex_secret, unhex};
-use crate::error::{db, Error, Result};
-use crate::gate::write_atomic;
+use crate::error::{db, io, Error, Result};
+use crate::gate::{sync_parent_dir, unique_sibling, write_atomic};
 use crate::header::{self, Header};
 use crate::totp::{self, TotpCode};
 
@@ -37,6 +37,20 @@ pub fn header_path(db_path: &Path) -> PathBuf {
     let mut s = db_path.as_os_str().to_owned();
     s.push(".hdr");
     PathBuf::from(s)
+}
+
+/// Removes SQLite's side files of `db_path` (`-journal`, `-wal`, `-shm`)
+/// and, with `with_db`, the database itself. Errors are ignored: this is
+/// cleanup.
+fn remove_db_files(db_path: &Path, with_db: bool) {
+    if with_db {
+        let _ = fs::remove_file(db_path);
+    }
+    for ext in ["-journal", "-wal", "-shm"] {
+        let mut s = db_path.as_os_str().to_owned();
+        s.push(ext);
+        let _ = fs::remove_file(PathBuf::from(s));
+    }
 }
 
 pub struct ItemRecord {
@@ -222,20 +236,43 @@ impl Vault {
             .map_err(|_| Error::InvalidInput("password must not be empty"))?;
         let sk = SecretKey::parse(secret_key)
             .map_err(|_| Error::InvalidInput("malformed Secret Key"))?;
+        // The header is the vault: it alone wraps the vault key. A database
+        // with no header cannot be opened and is the leftover of an
+        // interrupted create, so it is replaced.
         let hp = header_path(path);
-        if path.exists() || hp.exists() {
+        if hp.exists() {
             return Err(Error::InvalidInput("a vault already exists at this path"));
         }
         let key = header::random_key()?;
         let header = Header::seal(&key, &pw, &sk)?;
-        let conn = open_db(path, &key, true)?;
-        let init = conn.execute_batch(SCHEMA).map_err(db("create schema"));
-        if let Err(e) = init.and_then(|_| write_atomic(&hp, &header.to_bytes())) {
+        // Order: build the database under a unique name, rename it into
+        // place, sync the directory, then write the header (the commit
+        // point). A crash before the header is in place leaves no header,
+        // so create can be retried.
+        let tmp = unique_sibling(path, "creating");
+        let mut placed = false;
+        let result = (|| {
+            let conn = open_db(&tmp, &key, true)?;
+            conn.execute_batch(SCHEMA).map_err(db("create schema"))?;
             drop(conn);
-            let _ = fs::remove_file(path);
-            return Err(e);
+            remove_db_files(path, false);
+            fs::rename(&tmp, path).map_err(io("rename"))?;
+            placed = true;
+            sync_parent_dir(path)?;
+            write_atomic(&hp, &header.to_bytes())?;
+            open_db(path, &key, false)
+        })();
+        match result {
+            Ok(conn) => Ok(Vault { conn, key, header }),
+            Err(e) => {
+                remove_db_files(&tmp, true);
+                if placed {
+                    remove_db_files(path, true);
+                    let _ = fs::remove_file(&hp);
+                }
+                Err(e)
+            }
         }
-        Ok(Vault { conn, key, header })
     }
 
     pub fn unlock_with_password(path: &Path, password: &str, secret_key: &str) -> Result<Vault> {
@@ -1091,7 +1128,7 @@ impl Vault {
             write_atomic(&hp, &self.header.to_bytes())
         })();
         if result.is_err() {
-            let _ = fs::remove_file(path);
+            remove_db_files(path, true);
             let _ = fs::remove_file(&hp);
         }
         result

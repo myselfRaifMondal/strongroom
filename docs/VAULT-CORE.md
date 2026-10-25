@@ -33,6 +33,23 @@ wrong Secret Key, wrong device key, unreadable database) is the single
 the same vault key) and `Q.hdr`; it opens with the same credentials and
 refuses to overwrite.
 
+Write order and durability:
+
+- The header is written last and is the commit point. A vault exists at `P`
+  only if `P.hdr` exists. A database with no header cannot be opened (the
+  header alone wraps the vault key); `create` treats it as the leftover of an
+  interrupted create and replaces it, along with its `-journal`.
+- `create(P)`: build the database at `P.<pid>.<n>.creating`, close it, rename
+  it to `P`, sync the directory, write `P.hdr`, reopen `P`. On failure every
+  file it made is removed, so `create` can be retried.
+- `backup_to(Q)`: write `Q`, then `Q.hdr`. On failure both are removed.
+- Every header and gate-state write goes to a uniquely named temp file
+  `<file>.<pid>.<n>.tmp`, which is synced, renamed over the target, and then
+  the directory is synced (Unix; std has no directory sync on Windows). If a
+  write fails, the old file is unchanged and the temp file is removed.
+- When `create`, `backup_to` or a gate write returns `Ok`, its files survive
+  a crash or power cut.
+
 ## Device (biometric) wrap
 
 `wrap_vault_key_for_device(pk)` returns 146 bytes:
