@@ -1,7 +1,9 @@
 # Contributing to Strongroom
 
-Thanks for helping. Strongroom stores people's most sensitive data, so the
-bar for changes is high and the rules below are strict on purpose.
+Thanks for helping. Everyone taking part agrees to the
+[Code of Conduct](CODE_OF_CONDUCT.md). Strongroom stores people's most
+sensitive data, so the bar for changes is high and the rules below are
+strict on purpose.
 
 ## Security issues
 
@@ -64,6 +66,31 @@ Releases (all platforms, signing secrets) are described in
   and the "Known limitations" in the README are good sources of larger
   work. Comment on or open an issue before you start, so nobody duplicates
   effort.
+
+### Your first contribution
+
+You do not need to build every platform to help. Some starting points that
+need only one toolchain:
+
+| You know | Try | You need |
+|----------|-----|----------|
+| Rust | A CSV importer fix or a new importer in `crates/vault-core` (see [#53](https://github.com/myselfRaifMondal/strongroom/issues/53)), or a new fuzz target ([#49](https://github.com/myselfRaifMondal/strongroom/issues/49)) | `cargo test -p vault-core` |
+| Swift | More services for Organize by Service in `apps/macos/Sources/StrongroomKit/ServiceCatalog.swift`, or accessibility ([#24](https://github.com/myselfRaifMondal/strongroom/issues/24)) | macOS with the Command Line Tools |
+| Kotlin | Android parity features ([#21](https://github.com/myselfRaifMondal/strongroom/issues/21)) or accessibility ([#54](https://github.com/myselfRaifMondal/strongroom/issues/54)) | Android SDK + an emulator |
+| C# | Windows lock triggers ([#51](https://github.com/myselfRaifMondal/strongroom/issues/51)) or Trash and history ([#52](https://github.com/myselfRaifMondal/strongroom/issues/52)) | Windows 10/11 |
+| Python | A second check of the format against [docs/SPEC-VTF.md](docs/SPEC-VTF.md) in `reference/` | `uv` |
+| CI / YAML | [#47](https://github.com/myselfRaifMondal/strongroom/issues/47), [#48](https://github.com/myselfRaifMondal/strongroom/issues/48) | a GitHub fork |
+| A real device | Test reports for [#16](https://github.com/myselfRaifMondal/strongroom/issues/16), [#17](https://github.com/myselfRaifMondal/strongroom/issues/17) or [#32](https://github.com/myselfRaifMondal/strongroom/issues/32) | no coding at all |
+
+Docs fixes, clearer error messages and better tests are always welcome too.
+Comment "I'd like to take this" on an issue and it is yours.
+
+On your first pull request, GitHub waits for a maintainer to approve the CI
+run. That is a GitHub safety setting for first-time contributors, not a sign
+that something is wrong.
+
+Questions are welcome in
+[Discussions](https://github.com/myselfRaifMondal/strongroom/discussions).
 
 ## Ground rules
 
