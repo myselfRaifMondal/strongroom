@@ -37,6 +37,8 @@ The workflows in `.github/workflows/` show the exact, tested commands for
 each platform. The Windows installers (Inno Setup, x64 and ARM64) are built
 and smoke-tested by `windows-installer.yml` from `apps/windows/installer/`;
 the end-user guide is [apps/windows/INSTALL.md](apps/windows/INSTALL.md).
+Releases (all platforms, signing secrets) are described in
+[docs/RELEASING.md](docs/RELEASING.md).
 
 ### Where things are
 
