@@ -19,8 +19,8 @@ use crate::codec;
 use crate::csv::{self, CsvSource};
 use crate::domain;
 use crate::encoding::{hex, hex_secret, unhex};
-use crate::error::{db, Error, Result};
-use crate::gate::write_atomic;
+use crate::error::{db, io, Error, Result};
+use crate::gate::{sync_parent_dir, unique_sibling, write_atomic};
 use crate::header::{self, Header};
 use crate::totp::{self, TotpCode};
 
@@ -37,6 +37,20 @@ pub fn header_path(db_path: &Path) -> PathBuf {
     let mut s = db_path.as_os_str().to_owned();
     s.push(".hdr");
     PathBuf::from(s)
+}
+
+/// Removes SQLite's side files of `db_path` (`-journal`, `-wal`, `-shm`)
+/// and, with `with_db`, the database itself. Errors are ignored: this is
+/// cleanup.
+fn remove_db_files(db_path: &Path, with_db: bool) {
+    if with_db {
+        let _ = fs::remove_file(db_path);
+    }
+    for ext in ["-journal", "-wal", "-shm"] {
+        let mut s = db_path.as_os_str().to_owned();
+        s.push(ext);
+        let _ = fs::remove_file(PathBuf::from(s));
+    }
 }
 
 pub struct ItemRecord {
@@ -222,20 +236,53 @@ impl Vault {
             .map_err(|_| Error::InvalidInput("password must not be empty"))?;
         let sk = SecretKey::parse(secret_key)
             .map_err(|_| Error::InvalidInput("malformed Secret Key"))?;
+        // A vault exists at `path` if anything is there: create never
+        // overwrites a file. A header with no database is the leftover of an
+        // interrupted create (the header is written before the database is
+        // moved into place) and holds no items, so it is removed.
         let hp = header_path(path);
-        if path.exists() || hp.exists() {
+        if fs::symlink_metadata(path).is_ok() {
             return Err(Error::InvalidInput("a vault already exists at this path"));
+        }
+        if fs::symlink_metadata(&hp).is_ok() {
+            fs::remove_file(&hp).map_err(io("remove stale header"))?;
         }
         let key = header::random_key()?;
         let header = Header::seal(&key, &pw, &sk)?;
-        let conn = open_db(path, &key, true)?;
-        let init = conn.execute_batch(SCHEMA).map_err(db("create schema"));
-        if let Err(e) = init.and_then(|_| write_atomic(&hp, &header.to_bytes())) {
+        // Order: build the database under a unique name and close it, write
+        // the header, rename the database into place (the commit point),
+        // sync the directory, reopen. A crash before the rename leaves no
+        // database at `path`, so create can be retried.
+        let tmp = unique_sibling(path, "creating");
+        let mut wrote_header = false;
+        let mut placed = false;
+        let result = (|| {
+            let conn = open_db(&tmp, &key, true)?;
+            conn.execute_batch(SCHEMA).map_err(db("create schema"))?;
             drop(conn);
-            let _ = fs::remove_file(path);
-            return Err(e);
+            write_atomic(&hp, &header.to_bytes())?;
+            wrote_header = true;
+            // No database is at `path`, so any side file there is stale and
+            // must not be replayed into the new database.
+            remove_db_files(path, false);
+            fs::rename(&tmp, path).map_err(io("rename"))?;
+            placed = true;
+            sync_parent_dir(path)?;
+            open_db(path, &key, false)
+        })();
+        match result {
+            Ok(conn) => Ok(Vault { conn, key, header }),
+            Err(e) => {
+                remove_db_files(&tmp, true);
+                if placed {
+                    remove_db_files(path, true);
+                }
+                if wrote_header {
+                    let _ = fs::remove_file(&hp);
+                }
+                Err(e)
+            }
         }
-        Ok(Vault { conn, key, header })
     }
 
     pub fn unlock_with_password(path: &Path, password: &str, secret_key: &str) -> Result<Vault> {
@@ -1091,7 +1138,7 @@ impl Vault {
             write_atomic(&hp, &self.header.to_bytes())
         })();
         if result.is_err() {
-            let _ = fs::remove_file(path);
+            remove_db_files(path, true);
             let _ = fs::remove_file(&hp);
         }
         result

@@ -16,6 +16,7 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::error::{io, Error, Result};
 
@@ -43,16 +44,72 @@ pub struct UnlockGate {
     path: PathBuf,
 }
 
-/// Writes `bytes` to `path` via a temporary file and rename.
+/// A sibling of `path` with a name unique to this process and call:
+/// `<path>.<pid>.<n>.<suffix>`. Leftovers of crashed writers are never
+/// reused, and two writers never share one.
+pub(crate) fn unique_sibling(path: &Path, suffix: &str) -> PathBuf {
+    static N: AtomicU64 = AtomicU64::new(0);
+    let mut s = path.as_os_str().to_owned();
+    s.push(format!(
+        ".{}.{}.{suffix}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
+    PathBuf::from(s)
+}
+
+/// Makes completed renames and file creations in `path`'s directory
+/// durable. Unix only: std cannot open a directory for syncing on Windows,
+/// so there this is a no-op. A file system that cannot sync a directory
+/// (`EINVAL`) is accepted.
+pub(crate) fn sync_parent_dir(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        let dir = match path.parent() {
+            Some(d) if !d.as_os_str().is_empty() => d,
+            _ => Path::new("."),
+        };
+        let d = fs::File::open(dir).map_err(io("open dir"))?;
+        match d.sync_all() {
+            Err(e) if e.kind() != std::io::ErrorKind::InvalidInput => {
+                return Err(io("sync dir")(e))
+            }
+            _ => {}
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
+/// Writes `bytes` to `path` durably: a uniquely named temporary file is
+/// written and synced, renamed over `path`, then the directory is synced.
+/// On failure `path` keeps its old content and the temporary file is
+/// removed.
 pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
-    let tmp = PathBuf::from(tmp);
-    let mut f = fs::File::create(&tmp).map_err(io("write"))?;
-    f.write_all(bytes).map_err(io("write"))?;
-    f.sync_all().map_err(io("sync"))?;
+    let mut attempt = 0;
+    let (tmp, mut f) = loop {
+        let tmp = unique_sibling(path, "tmp");
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+        {
+            Ok(f) => break (tmp, f),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && attempt < 8 => attempt += 1,
+            Err(e) => return Err(io("write")(e)),
+        }
+    };
+    let written = f
+        .write_all(bytes)
+        .map_err(io("write"))
+        .and_then(|_| f.sync_all().map_err(io("sync")));
     drop(f);
-    fs::rename(&tmp, path).map_err(io("rename"))
+    if let Err(e) = written.and_then(|_| fs::rename(&tmp, path).map_err(io("rename"))) {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
+    }
+    sync_parent_dir(path)
 }
 
 impl UnlockGate {

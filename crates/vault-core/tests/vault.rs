@@ -592,6 +592,150 @@ fn unlock_gate_rules() {
     let _ = std::fs::remove_file(&p);
 }
 
+/// Files in `p`'s directory whose name starts with `p`'s name, other than
+/// `p` itself and its header.
+fn leftovers(p: &Path) -> Vec<String> {
+    let name = p.file_name().unwrap().to_string_lossy().into_owned();
+    let hdr = format!("{name}.hdr");
+    std::fs::read_dir(p.parent().unwrap())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with(&name) && *n != name && *n != hdr)
+        .collect()
+}
+
+#[test]
+fn create_is_retryable_and_cleans_up() {
+    // A leftover temp file (here a directory, which cannot be written) at
+    // the old fixed `.hdr.tmp` name does not block create.
+    let p = tmp("leftover");
+    let mut stale = header_path(&p).into_os_string();
+    stale.push(".tmp");
+    let stale = PathBuf::from(stale);
+    std::fs::create_dir_all(&stale).unwrap();
+    let v = Vault::create(&p, PW, &sk(), T0).unwrap();
+    drop(v);
+    assert!(Vault::unlock_with_password(&p, PW, &sk()).is_ok());
+    std::fs::remove_dir(&stale).unwrap();
+    assert!(leftovers(&p).is_empty(), "{:?}", leftovers(&p));
+    cleanup(&p);
+
+    // A database with no header (header lost or moved) still holds items:
+    // create refuses and leaves it alone, and copying the header back
+    // recovers it.
+    let p = tmp("noheader");
+    {
+        let mut v = Vault::create(&p, PW, &sk(), T0).unwrap();
+        v.add_item(login("Old", "o", "po", "o.example"), T0)
+            .unwrap();
+    }
+    let saved_hdr = std::fs::read(header_path(&p)).unwrap();
+    let db_before = std::fs::read(&p).unwrap();
+    std::fs::remove_file(header_path(&p)).unwrap();
+    assert!(matches!(
+        Vault::create(&p, PW, &other_sk(), T0),
+        Err(Error::InvalidInput(_))
+    ));
+    assert_eq!(std::fs::read(&p).unwrap(), db_before);
+    assert!(!header_path(&p).exists());
+    std::fs::write(header_path(&p), &saved_hdr).unwrap();
+    let v = Vault::unlock_with_password(&p, PW, &sk()).unwrap();
+    assert_eq!(v.search("", None, None).unwrap().len(), 1);
+    drop(v);
+    assert!(leftovers(&p).is_empty(), "{:?}", leftovers(&p));
+    cleanup(&p);
+
+    // Any other file at the path is never overwritten.
+    let p = tmp("notavault");
+    std::fs::write(&p, b"not a vault").unwrap();
+    assert!(matches!(
+        Vault::create(&p, PW, &sk(), T0),
+        Err(Error::InvalidInput(_))
+    ));
+    assert_eq!(std::fs::read(&p).unwrap(), b"not a vault");
+    assert!(!header_path(&p).exists());
+    assert!(leftovers(&p).is_empty(), "{:?}", leftovers(&p));
+    cleanup(&p);
+
+    // A header with no database (a create interrupted before the database
+    // was moved into place) is not a vault: create replaces it, and a
+    // stale `-journal` is removed rather than replayed.
+    let p = tmp("lonehdr");
+    drop(Vault::create(&p, PW, &sk(), T0).unwrap());
+    std::fs::remove_file(&p).unwrap();
+    let mut journal = p.clone().into_os_string();
+    journal.push("-journal");
+    std::fs::write(&journal, b"stale journal").unwrap();
+    drop(Vault::create(&p, PW, &other_sk(), T0).unwrap());
+    assert!(matches!(
+        Vault::unlock_with_password(&p, PW, &sk()),
+        Err(Error::UnlockFailed)
+    ));
+    let v = Vault::unlock_with_password(&p, PW, &other_sk()).unwrap();
+    assert!(v.search("", None, None).unwrap().is_empty());
+    drop(v);
+    assert!(leftovers(&p).is_empty(), "{:?}", leftovers(&p));
+    cleanup(&p);
+
+    // A failed create leaves no files and can be retried. Here the stale
+    // header cannot be removed because it is a non-empty directory.
+    let p = tmp("fail");
+    let hdir = header_path(&p);
+    std::fs::create_dir_all(&hdir).unwrap();
+    std::fs::write(hdir.join("keep"), b"x").unwrap();
+    assert!(matches!(
+        Vault::create(&p, PW, &sk(), T0),
+        Err(Error::Storage(_))
+    ));
+    assert!(!p.exists());
+    assert!(hdir.join("keep").exists());
+    assert!(leftovers(&p).is_empty(), "{:?}", leftovers(&p));
+    std::fs::remove_dir_all(&hdir).unwrap();
+    drop(Vault::create(&p, PW, &sk(), T0).unwrap());
+    assert!(Vault::unlock_with_password(&p, PW, &sk()).is_ok());
+    cleanup(&p);
+}
+
+/// A failed atomic write (header, gate state) leaves the old file intact
+/// and no temp file behind. Simulated with a read-only directory.
+#[cfg(unix)]
+#[test]
+fn failed_atomic_write_keeps_old_file() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tmp("rodir").with_extension("d");
+    std::fs::create_dir_all(&dir).unwrap();
+    let p = dir.join("gate");
+    let g = UnlockGate::new(&p).unwrap();
+    g.record_password_unlock(T0).unwrap();
+    let before = std::fs::read(&p).unwrap();
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+    // Root ignores directory permissions; nothing to simulate then.
+    let probe = dir.join("probe");
+    if std::fs::write(&probe, b"").is_ok() {
+        let _ = std::fs::remove_file(&probe);
+    } else {
+        assert!(matches!(
+            g.record_password_unlock(T0 + 20),
+            Err(Error::Storage(_))
+        ));
+        assert_eq!(std::fs::read(&p).unwrap(), before);
+    }
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let names: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(names, ["gate"]);
+    // A successful write leaves no temp file either.
+    g.record_password_unlock(T0 + 30).unwrap();
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+    assert_eq!(
+        g.check(T0 + 40, false, false, true),
+        PasswordRequiredReason::NotRequired
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 #[test]
 fn pairing_payload_round_trip() {
     let pk = SoftDevice::new(0x33).public_key();
