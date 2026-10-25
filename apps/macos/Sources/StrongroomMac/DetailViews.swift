@@ -10,50 +10,23 @@ struct ItemDetailView: View {
     var body: some View {
         ScrollView {
             if let item {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: DS.Space.l) {
                     if !FolderPath.components(item.data.folder).isEmpty {
                         Breadcrumb(path: FolderPath.components(item.data.folder), font: .caption)
                     }
                     header(item)
+                    quickActions(item)
                     healthNotice
                     ItemContentView(input: item.data, itemId: item.id)
-                    VStack(alignment: .leading, spacing: 4) {
-                        let tags = ReservedTags.userTags(item.data.tags)
-                        if !tags.isEmpty { Text("Tags: \(tags.joined(separator: ", "))") }
-                        if item.data.travelSafe { Label("Travel safe", systemImage: "airplane") }
-                        Text("Modified \(Date(timeIntervalSince1970: TimeInterval(item.modifiedAt)).formatted())")
-                        Text("Created \(Date(timeIntervalSince1970: TimeInterval(item.createdAt)).formatted())")
-                    }
-                    .font(.caption).foregroundStyle(.secondary)
+                    metadata(item)
                 }
-                .padding(20)
-                .frame(maxWidth: 720, alignment: .leading)
+                .readableWidth()
+                .panePadding()
             } else {
                 ProgressView().padding()
             }
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                if let item, item.data.password != nil {
-                    Button {
-                        AutoType.confirmAndType(item.data.password ?? "", itemTitle: item.data.title, target: AutoType.lastExternalTarget())
-                    } label: {
-                        Label("Auto-Type…", systemImage: "keyboard")
-                    }
-                    .help("Type the password into the app you used last (asks first)")
-                }
-                if let item, ItemPresentation.isAccount(kind: item.data.kind, tags: item.data.tags) {
-                    Button { model.requestSibling(of: itemId) } label: {
-                        Label("Add Another Account", systemImage: "person.badge.plus")
-                    }
-                    .help("Add another account for \(ItemPresentation.serviceName(folder: item.data.folder, urls: item.data.urls, title: item.data.title)) (same folder, websites and template)")
-                }
-                Button { model.sheet = .history(itemId) } label: { Label("History", systemImage: "clock.arrow.circlepath") }
-                    .help("Past versions of this item")
-                Button { model.requestEdit(itemId) } label: { Label("Edit", systemImage: "pencil") }
-                Button(role: .destructive) { confirmTrash = true } label: { Label("Move to Trash", systemImage: "trash") }
-            }
-        }
+        .adaptivePane()
         .confirmationDialog("Move this item to the trash?", isPresented: $confirmTrash) {
             Button("Move to Trash", role: .destructive) { model.trash(itemId) }
         } message: {
@@ -62,21 +35,109 @@ struct ItemDetailView: View {
         .task(id: itemId) { item = model.item(itemId) }
     }
 
+    // MARK: header
+
     private func header(_ item: Item) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: ItemPresentation.symbol(kind: item.data.kind, tags: item.data.tags))
-                .font(.title).foregroundStyle(.tint).frame(width: 36)
-            VStack(alignment: .leading) {
-                Text(item.data.title).font(.title2.bold()).textSelection(.enabled)
-                Text(ItemPresentation.typeName(kind: item.data.kind, tags: item.data.tags)).font(.caption).foregroundStyle(.secondary)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: DS.Space.m) {
+                titleBlock(item)
+                Spacer(minLength: DS.Space.m)
+                actions(item)
             }
-            Spacer()
-            let fav = ReservedTags.isFavourite(item.data.tags)
+            VStack(alignment: .leading, spacing: DS.Space.m) {
+                titleBlock(item)
+                actions(item)
+            }
+        }
+    }
+
+    private func titleBlock(_ item: Item) -> some View {
+        HStack(spacing: DS.Space.m) {
+            Image(systemName: ItemPresentation.symbol(kind: item.data.kind, tags: item.data.tags))
+                .font(.title)
+                .foregroundStyle(.tint)
+                .frame(width: 40, height: 40)
+                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: DS.Radius.card))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: DS.Space.xxs) {
+                Text(item.data.title).font(.paneTitle).textSelection(.enabled).lineLimit(2)
+                Text(ItemPresentation.typeName(kind: item.data.kind, tags: item.data.tags))
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// The item's actions, always here: favourite, Edit, and the rest in a menu.
+    private func actions(_ item: Item) -> some View {
+        let fav = ReservedTags.isFavourite(item.data.tags)
+        return HStack(spacing: DS.Space.s) {
             Button { model.toggleFavourite(itemId) } label: {
-                Image(systemName: fav ? "star.fill" : "star").font(.title3).foregroundStyle(fav ? .yellow : .secondary)
+                Label(fav ? "Remove from Favourites" : "Add to Favourites", systemImage: fav ? "star.fill" : "star")
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(fav ? Color.yellow : Color.secondary)
             }
             .buttonStyle(.borderless)
+            .font(.title3)
             .help(fav ? "Remove from Favourites" : "Add to Favourites")
+            Button { model.requestEdit(itemId) } label: { Label("Edit", systemImage: "pencil") }
+                .help("Edit this item")
+            Menu {
+                if item.data.password != nil {
+                    Button {
+                        AutoType.confirmAndType(item.data.password ?? "", itemTitle: item.data.title, target: AutoType.lastExternalTarget())
+                    } label: {
+                        Label("Auto-Type Password…", systemImage: "keyboard")
+                    }
+                    .help("Type the password into the app you used last (asks first)")
+                }
+                if ItemPresentation.isAccount(kind: item.data.kind, tags: item.data.tags) {
+                    Button { model.requestSibling(of: itemId) } label: {
+                        Label("Add Another Account for \(ItemPresentation.serviceName(folder: item.data.folder, urls: item.data.urls, title: item.data.title))…",
+                              systemImage: "person.badge.plus")
+                    }
+                }
+                Button { model.sheet = .moveItems([itemId]) } label: { Label("Move to Folder…", systemImage: "folder") }
+                Button { model.sheet = .history(itemId) } label: { Label("History…", systemImage: "clock.arrow.circlepath") }
+                Divider()
+                Button(role: .destructive) { confirmTrash = true } label: { Label("Move to Trash…", systemImage: "trash") }
+            } label: {
+                Label("More", systemImage: "ellipsis.circle")
+            }
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Auto-type, another account, move, history, trash")
+        }
+    }
+
+    /// Copy buttons for the values people reach for most.
+    @ViewBuilder private func quickActions(_ item: Item) -> some View {
+        let d = item.data
+        let hasAny = d.password != nil || d.username != nil || d.totp != nil || WebsiteOpener.url(d.urls) != nil
+        if hasAny {
+            FlowRow(spacing: DS.Space.s, lineSpacing: DS.Space.s) {
+                if let p = d.password {
+                    Button { model.copy(p, label: ItemPresentation.passwordLabel(kind: d.kind, tags: d.tags)) } label: {
+                        Label("Copy \(ItemPresentation.passwordLabel(kind: d.kind, tags: d.tags))", systemImage: "key")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                if let u = d.username {
+                    Button { model.copy(u, label: "Username") } label: { Label("Copy Username", systemImage: "person") }
+                }
+                if d.totp != nil {
+                    Button {
+                        if let code = model.totp(itemId) { model.copy(code.code, label: "One-time code") }
+                    } label: {
+                        Label("Copy Code", systemImage: "clock")
+                    }
+                }
+                if WebsiteOpener.url(d.urls) != nil {
+                    Button { WebsiteOpener.open(d.urls) } label: { Label("Open Website", systemImage: "safari") }
+                        .help("Opens the website in your browser")
+                }
+            }
+            .controlSize(.small)
+            .labelStyle(QuickActionLabelStyle())
         }
     }
 
@@ -87,14 +148,48 @@ struct ItemDetailView: View {
             model.oldIDs.contains(itemId) ? "This password has not changed in over a year." : nil,
         ].compactMap { $0 }
         if !notes.isEmpty {
-            Label(notes.joined(separator: " "), systemImage: "exclamationmark.triangle.fill")
-                .font(.callout)
-                .foregroundStyle(.primary)
-                .symbolRenderingMode(.multicolor)
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            HStack(alignment: .center, spacing: DS.Space.m) {
+                Callout(.warning, notes.joined(separator: " "))
+                Button("Change…") { model.requestChangePassword(itemId) }
+                    .help("Open the editor with the generator ready. Nothing is replaced until you save.")
+            }
         }
+    }
+
+    private func metadata(_ item: Item) -> some View {
+        VStack(alignment: .leading, spacing: DS.Space.xs) {
+            let tags = ReservedTags.userTags(item.data.tags)
+            if !tags.isEmpty { Label(tags.joined(separator: ", "), systemImage: "tag") }
+            if item.data.travelSafe { Label("Travel safe", systemImage: "airplane") }
+            Text("Modified \(Date(timeIntervalSince1970: TimeInterval(item.modifiedAt)).formatted(date: .abbreviated, time: .shortened))")
+            Text("Created \(Date(timeIntervalSince1970: TimeInterval(item.createdAt)).formatted(date: .abbreviated, time: .shortened))")
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, DS.Space.xs)
+    }
+}
+
+/// Copy buttons drop their icon when the pane is narrow.
+private struct QuickActionLabelStyle: LabelStyle {
+    @Environment(\.isCompactPane) private var compact
+
+    func makeBody(configuration: Configuration) -> some View {
+        if compact {
+            configuration.title
+        } else {
+            HStack(spacing: DS.Space.xs) {
+                configuration.icon
+                configuration.title
+            }
+        }
+    }
+}
+
+extension ItemPresentation {
+    /// "Password", "PIN", "Key"… for the copy button.
+    static func passwordLabel(kind: ItemKind, tags: [String]) -> String {
+        ReservedTags.template(in: tags)?.passwordLabel ?? kind.passwordLabel
     }
 }
 
@@ -112,27 +207,23 @@ struct ItemContentView: View {
         let template = ReservedTags.template(in: input.tags)
         let groups = FieldGroups.group(names: input.fields.map(\.name), template: template)
         let f = input.fields
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: DS.Space.l) {
             if let warning = template?.warning {
-                WarningBox(text: warning)
+                Callout(.danger, warning)
             }
             let hasMain = input.username != nil || input.password != nil || input.totp != nil || !input.urls.isEmpty
                 || groups.template.contains { !f[$0].value.isEmpty }
             if hasMain {
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 10) {
-                        if let u = input.username { FieldRow(label: template?.usernameLabel ?? "Username", value: u, concealed: false) }
-                        if let p = input.password {
-                            FieldRow(label: template?.passwordLabel ?? input.kind.passwordLabel, value: p, concealed: true)
-                        }
-                        if input.totp != nil, showTOTP, let itemId { TOTPRow(itemId: itemId) }
-                        ForEach(input.urls, id: \.self) { FieldRow(label: "Website", value: $0, concealed: false) }
-                        ForEach(groups.template.filter { !f[$0].value.isEmpty }, id: \.self) { i in
-                            FieldRow(label: f[i].name, value: f[i].value, concealed: f[i].concealed)
-                        }
+                SectionBox(title: nil) {
+                    if let u = input.username { FieldRow(label: template?.usernameLabel ?? "Username", value: u, concealed: false) }
+                    if let p = input.password {
+                        FieldRow(label: template?.passwordLabel ?? input.kind.passwordLabel, value: p, concealed: true)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(6)
+                    if input.totp != nil, showTOTP, let itemId { TOTPRow(itemId: itemId) }
+                    ForEach(input.urls, id: \.self) { FieldRow(label: "Website", value: $0, concealed: false) }
+                    ForEach(groups.template.filter { !f[$0].value.isEmpty }, id: \.self) { i in
+                        FieldRow(label: f[i].name, value: f[i].value, concealed: f[i].concealed)
+                    }
                 }
             }
             if !groups.recoveryCodes.isEmpty {
@@ -141,7 +232,7 @@ struct ItemContentView: View {
             if !groups.securityPairs.isEmpty {
                 SectionBox(title: "Security questions", symbol: "questionmark.bubble") {
                     ForEach(groups.securityPairs, id: \.number) { pair in
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: DS.Space.s) {
                             if let q = pair.question { FieldRow(label: "Question", value: f[q].value, concealed: f[q].concealed) }
                             if let a = pair.answer { FieldRow(label: "Answer", value: f[a].value, concealed: f[a].concealed) }
                         }
@@ -150,7 +241,7 @@ struct ItemContentView: View {
                 }
             }
             if !groups.twoFactorNotes.isEmpty {
-                SectionBox(title: "2FA / backup notes", symbol: "lock.shield") {
+                SectionBox(title: "2FA and backup notes", symbol: "lock.shield") {
                     ForEach(groups.twoFactorNotes, id: \.self) { i in
                         FieldRow(label: "Note", value: f[i].value, concealed: f[i].concealed)
                     }
@@ -174,50 +265,55 @@ struct ItemContentView: View {
                 }
             }
             if let notes = input.notes {
-                GroupBox("Notes") {
-                    Text(notes).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(6)
+                SectionBox(title: "Notes", symbol: "note.text") {
+                    Text(notes).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
     }
 }
 
-struct SectionBox<Content: View>: View {
-    let title: String
-    let symbol: String
-    var trailing: String? = nil
-    @ViewBuilder let content: Content
+/// One labelled row of the detail pane: label in a fixed column when there is
+/// room, above the value when the pane is narrow. Actions sit at the right.
+struct DetailRow<Value: View, Actions: View>: View {
+    @Environment(\.isCompactPane) private var compact
+    let label: String
+    @ViewBuilder let value: Value
+    @ViewBuilder let actions: Actions
 
     var body: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 10) { content }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(6)
-        } label: {
-            HStack {
-                Label(title, systemImage: symbol)
-                if let trailing {
-                    Spacer()
-                    Text(trailing).font(.caption).foregroundStyle(.secondary)
+        if compact {
+            VStack(alignment: .leading, spacing: DS.Space.xxs) {
+                Text(label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: DS.Space.s) {
+                    value
+                    Spacer(minLength: DS.Space.xs)
+                    actions
                 }
+            }
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: DS.Space.m) {
+                Text(label)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: DS.Width.label, alignment: .trailing)
+                value
+                Spacer(minLength: DS.Space.xs)
+                actions
             }
         }
     }
+}
+
+/// Masked text of a concealed value (length hint only, 8 to 24 dots).
+func maskedText(_ value: String) -> String {
+    String(repeating: "•", count: min(max(value.count, 8), 24))
 }
 
 struct WarningBox: View {
     let text: String
-    var body: some View {
-        Label {
-            Text(text).fixedSize(horizontal: false, vertical: true)
-        } icon: {
-            Image(systemName: "exclamationmark.octagon.fill").foregroundStyle(.red)
-        }
-        .font(.callout)
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
-    }
+    var body: some View { Callout(.danger, text) }
 }
 
 struct RecoveryCodesSection: View {
@@ -238,9 +334,8 @@ struct RecoveryCodesSection: View {
                 RecoveryCodeRow(index: i, field: fields[i], used: used, itemId: itemId)
             }
             if unused <= 2 && total > 0 {
-                Text(unused == 0 ? "All codes are used. Generate new ones at the service and paste them in."
-                                 : "Only \(unused) unused code\(unused == 1 ? "" : "s") left. Consider generating new ones.")
-                    .font(.caption).foregroundStyle(.orange)
+                Callout(.warning, unused == 0 ? "All codes are used. Generate new ones at the service and paste them in."
+                                              : "Only \(unused) unused code\(unused == 1 ? "" : "s") left. Consider generating new ones.")
             }
         }
     }
@@ -255,39 +350,39 @@ struct RecoveryCodeRow: View {
     @State private var revealed = false
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            let label: String = {
-                if case let .recoveryCode(n?, _) = SensitiveField.classify(field.name) { return "Code \(n)" }
-                return "Code"
-            }()
-            Text(label).foregroundStyle(.secondary).frame(width: 110, alignment: .trailing)
-            Group {
-                if field.concealed && !revealed {
-                    Text(String(repeating: "•", count: min(max(field.value.count, 8), 24)))
-                } else {
-                    Text(field.value).textSelection(.enabled)
+        let short: String = {
+            if case let .recoveryCode(n?, _) = SensitiveField.classify(field.name) { return "Code \(n)" }
+            return "Code"
+        }()
+        DetailRow(label: short) {
+            HStack(spacing: DS.Space.s) {
+                Group {
+                    if field.concealed && !revealed {
+                        Text(maskedText(field.value))
+                    } else {
+                        Text(field.value).textSelection(.enabled)
+                    }
+                }
+                .font(.secret)
+                .lineLimit(1)
+                .strikethrough(used)
+                .foregroundStyle(used ? .secondary : .primary)
+                if used {
+                    Text("used").font(.caption2.weight(.medium)).padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(.quaternary, in: Capsule())
                 }
             }
-            .font(.system(.body, design: .monospaced))
-            .strikethrough(used)
-            .foregroundStyle(used ? .secondary : .primary)
-            if used {
-                Text("used").font(.caption2.weight(.medium)).padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(.quaternary, in: Capsule())
-            }
-            Spacer()
+        } actions: {
             if field.concealed {
-                Button { revealed.toggle() } label: { Image(systemName: revealed ? "eye.slash" : "eye") }
-                    .buttonStyle(.borderless).help(revealed ? "Hide" : "Reveal")
+                IconButton(revealed ? "Hide" : "Reveal", systemImage: revealed ? "eye.slash" : "eye") { revealed.toggle() }
             }
-            Button { model.copy(field.value, label: label) } label: { Image(systemName: "doc.on.doc") }
-                .buttonStyle(.borderless).help("Copy (clears in \(Int(SecureClipboard.defaultClearAfter)) s)")
+            IconButton("Copy \(label)", systemImage: "doc.on.doc", help: "Copy (clears in \(Int(SecureClipboard.defaultClearAfter)) s)") {
+                model.copy(field.value, label: label)
+            }
             if let itemId {
-                Button { model.setRecoveryCodeUsed(itemId, fieldIndex: index, used: !used) } label: {
-                    Image(systemName: used ? "arrow.uturn.backward.circle" : "checkmark.circle")
+                IconButton(used ? "Mark unused" : "Mark used", systemImage: used ? "arrow.uturn.backward.circle" : "checkmark.circle") {
+                    model.setRecoveryCodeUsed(itemId, fieldIndex: index, used: !used)
                 }
-                .buttonStyle(.borderless)
-                .help(used ? "Mark unused" : "Mark used")
             }
         }
         .contextMenu {
@@ -316,17 +411,17 @@ struct SeedPhraseView: View {
         let missing = words.filter(\.isEmpty).count
         SectionBox(title: "Seed phrase (\(words.count) word\(words.count == 1 ? "" : "s"))", symbol: "key.horizontal",
                    trailing: missing > 0 ? "\(missing) position\(missing == 1 ? "" : "s") empty" : nil) {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 8)], alignment: .leading, spacing: 8) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: DS.Space.s)], alignment: .leading, spacing: DS.Space.s) {
                 ForEach(Array(words.enumerated()), id: \.offset) { i, w in
-                    HStack(spacing: 6) {
-                        Text("\(i + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 22, alignment: .trailing)
+                    HStack(spacing: DS.Space.s) {
+                        Text("\(i + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(minWidth: 22, alignment: .trailing)
                         Text(revealed ? (w.isEmpty ? "—" : w) : "•••••")
-                            .font(.system(.body, design: .monospaced))
+                            .font(.secret)
                             .textSelection(.enabled)
                     }
-                    .padding(.vertical, 3).padding(.horizontal, 6)
+                    .padding(.vertical, 3).padding(.horizontal, DS.Space.s)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 5))
+                    .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: DS.Radius.small))
                 }
             }
             HStack {
@@ -353,24 +448,26 @@ struct FieldRow: View {
     @State private var revealed = false
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label).foregroundStyle(.secondary).frame(width: 110, alignment: .trailing).lineLimit(2)
+        DetailRow(label: label) {
             Group {
                 if concealed && !revealed {
-                    Text(String(repeating: "•", count: min(max(value.count, 8), 24)))
+                    Text(maskedText(value)).lineLimit(1)
+                } else if value.contains(where: \.isWhitespace) {
+                    Text(value).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 } else {
-                    Text(value).textSelection(.enabled)
+                    // One long word (URL, key, address): keep it on one line.
+                    Text(value).textSelection(.enabled).lineLimit(1).truncationMode(.middle)
                 }
             }
-            .font(.system(.body, design: concealed ? .monospaced : .default))
-            .lineLimit(concealed && !revealed ? 1 : nil)
-            Spacer()
+            .font(concealed ? .secret : .body)
+        } actions: {
             if concealed {
-                Button { revealed.toggle() } label: { Image(systemName: revealed ? "eye.slash" : "eye") }
-                    .buttonStyle(.borderless).help(revealed ? "Hide" : "Reveal")
+                IconButton(revealed ? "Hide \(label)" : "Reveal \(label)", systemImage: revealed ? "eye.slash" : "eye",
+                           help: revealed ? "Hide" : "Reveal") { revealed.toggle() }
             }
-            Button { model.copy(value, label: label) } label: { Image(systemName: "doc.on.doc") }
-                .buttonStyle(.borderless).help("Copy (clears in \(Int(SecureClipboard.defaultClearAfter)) s)")
+            IconButton("Copy \(label)", systemImage: "doc.on.doc", help: "Copy (clears in \(Int(SecureClipboard.defaultClearAfter)) s)") {
+                model.copy(value, label: label)
+            }
         }
     }
 }
@@ -383,25 +480,27 @@ struct TOTPRow: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { _ in
             let code = model.totp(itemId)
-            HStack(alignment: .firstTextBaseline) {
-                Text("One-time code").foregroundStyle(.secondary).frame(width: 110, alignment: .trailing)
+            DetailRow(label: "One-time code") {
                 if let code {
-                    Text(Self.grouped(code.code)).font(.system(.title3, design: .monospaced).bold())
-                    ZStack {
-                        Circle().stroke(.quaternary, lineWidth: 3)
-                        Circle()
-                            .trim(from: 0, to: CGFloat(code.secondsRemaining) / CGFloat(max(code.period, 1)))
-                            .stroke(code.secondsRemaining <= 5 ? Color.red : Color.accentColor, lineWidth: 3)
-                            .rotationEffect(.degrees(-90))
-                        Text("\(code.secondsRemaining)").font(.system(size: 9)).monospacedDigit()
+                    HStack(spacing: DS.Space.s) {
+                        Text(Self.grouped(code.code)).font(.system(.title3, design: .monospaced).bold())
+                        ZStack {
+                            Circle().stroke(.quaternary, lineWidth: 3)
+                            Circle()
+                                .trim(from: 0, to: CGFloat(code.secondsRemaining) / CGFloat(max(code.period, 1)))
+                                .stroke(code.secondsRemaining <= 5 ? Color.red : Color.accentColor, lineWidth: 3)
+                                .rotationEffect(.degrees(-90))
+                            Text("\(code.secondsRemaining)").font(.caption2).monospacedDigit()
+                        }
+                        .frame(width: 24, height: 24)
+                        .accessibilityLabel("\(code.secondsRemaining) seconds left")
                     }
-                    .frame(width: 22, height: 22)
-                    Spacer()
-                    Button { model.copy(code.code, label: "One-time code") } label: { Image(systemName: "doc.on.doc") }
-                        .buttonStyle(.borderless)
                 } else {
                     Text("Invalid TOTP secret").foregroundStyle(.red)
-                    Spacer()
+                }
+            } actions: {
+                if let code {
+                    IconButton("Copy one-time code", systemImage: "doc.on.doc") { model.copy(code.code, label: "One-time code") }
                 }
             }
         }
@@ -425,25 +524,28 @@ struct HistorySheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("History of “\(model.summary(itemId)?.title ?? "item")”").font(.title3.bold())
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: DS.Space.xs) {
+                    Text("History of “\(model.summary(itemId)?.title ?? "item")”").font(.sheetTitle).lineLimit(1)
+                    HintText("\(revisions.count) earlier version\(revisions.count == 1 ? "" : "s"). Up to 64 are kept.")
+                }
                 Spacer()
-                Text("\(revisions.count) earlier version\(revisions.count == 1 ? "" : "s") (up to 64 are kept)")
-                    .font(.caption).foregroundStyle(.secondary)
             }
-            .padding(16)
+            .padding(.horizontal, DS.Space.xl)
+            .padding(.top, DS.Space.xl)
+            .padding(.bottom, DS.Space.m)
             Divider()
             HSplitView {
                 List(selection: $selected) {
                     ForEach(Array(revisions.enumerated()), id: \.offset) { i, r in
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: DS.Space.xxs) {
                             Text(Date(timeIntervalSince1970: TimeInterval(r.modifiedAt)).formatted(date: .abbreviated, time: .shortened))
                             Text(r.data.title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                         .tag(i)
                     }
                 }
-                .frame(minWidth: 200, idealWidth: 220, maxWidth: 260)
+                .frame(minWidth: 180, idealWidth: 220, maxWidth: 280)
                 .overlay {
                     if revisions.isEmpty {
                         ContentUnavailableView("No earlier versions", systemImage: "clock",
@@ -453,35 +555,42 @@ struct HistorySheet: View {
                 ScrollView {
                     if let selected, revisions.indices.contains(selected) {
                         let r = revisions[selected]
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text(r.data.title).font(.title3.bold())
+                        VStack(alignment: .leading, spacing: DS.Space.m) {
+                            Text(r.data.title).font(.sheetTitle)
                             if let folder = r.data.folder {
-                                Text("Folder: \(FolderPath.components(folder).joined(separator: " › "))").font(.caption).foregroundStyle(.secondary)
+                                Label(FolderPath.components(folder).joined(separator: " › "), systemImage: "folder")
+                                    .font(.callout).foregroundStyle(.secondary)
                             }
                             ItemContentView(input: r.data, itemId: nil, showTOTP: false)
                             if let t = r.data.totp {
-                                FieldRow(label: "TOTP secret", value: t, concealed: true)
+                                SectionBox(title: nil) { FieldRow(label: "TOTP secret", value: t, concealed: true) }
                             }
                         }
-                        .padding(16)
+                        .padding(DS.Space.l)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     } else if !revisions.isEmpty {
-                        Text("Select a version to view it.").foregroundStyle(.secondary).padding(30)
+                        Text("Select a version to view it.").foregroundStyle(.secondary).padding(DS.Space.xxl)
                     }
                 }
-                .frame(minWidth: 380)
+                .adaptivePane()
+                .frame(minWidth: 320)
             }
             Divider()
-            HStack {
-                Text("Copying a field from an old version uses the clearing clipboard.").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button("Restore This Version…") { confirmRestore = true }
-                    .disabled(selected == nil)
-                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: DS.Space.s) {
+                    HintText("Copying a field from an old version uses the clearing clipboard.", font: .caption)
+                    Spacer()
+                    footerButtons
+                }
+                HStack(spacing: DS.Space.s) {
+                    Spacer()
+                    footerButtons
+                }
             }
-            .padding(12)
+            .padding(.horizontal, DS.Space.xl)
+            .padding(.vertical, DS.Space.m)
         }
-        .frame(width: 760, height: 560)
+        .frame(minWidth: 560, idealWidth: DS.Sheet.wide.width, minHeight: 380, idealHeight: DS.Sheet.wide.height)
         .onAppear {
             revisions = model.history(itemId)
             selected = revisions.isEmpty ? nil : 0
@@ -496,5 +605,11 @@ struct HistorySheet: View {
         } message: {
             Text("The current version is kept in the history, so this can be undone.")
         }
+    }
+
+    @ViewBuilder private var footerButtons: some View {
+        Button("Restore This Version…") { confirmRestore = true }
+            .disabled(selected == nil)
+        Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
     }
 }

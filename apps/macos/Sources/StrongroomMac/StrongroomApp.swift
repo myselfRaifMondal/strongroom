@@ -4,11 +4,13 @@ import ServiceManagement
 import StrongroomKit
 import SwiftUI
 
-@main
-struct StrongroomApp: App {
+/// The app's scenes. Started from `StrongroomMacMain/main.swift`.
+public struct StrongroomApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
-    var body: some Scene {
+    public init() {}
+
+    public var body: some Scene {
         Window("Strongroom", id: "main") {
             RootView()
                 .environmentObject(delegate.model)

@@ -35,16 +35,19 @@ struct VaultView: View {
     private var splitView: some View {
         NavigationSplitView {
             SidebarView()
-                .navigationSplitViewColumnWidth(min: 200, ideal: 230)
+                .navigationSplitViewColumnWidth(min: DS.Column.sidebarMin, ideal: DS.Column.sidebarIdeal, max: DS.Column.sidebarMax)
         } content: {
             ContentColumn()
-                .navigationSplitViewColumnWidth(min: 260, ideal: 300)
+                .navigationSplitViewColumnWidth(min: DS.Column.listMin, ideal: DS.Column.listIdeal, max: DS.Column.listMax)
         } detail: {
             DetailColumn()
+                .navigationSplitViewColumnWidth(min: DS.Column.detailMin, ideal: 640)
         }
-        .searchable(text: $model.query, placement: .toolbar, prompt: "Search")
+        .searchable(text: $model.query, placement: .toolbar, prompt: "Search all items")
         .toolbar {
-            ToolbarItemGroup {
+            // Vault-wide actions, in the same place on every screen. Actions on
+            // one item are in the item's header.
+            ToolbarItemGroup(placement: .primaryAction) {
                 Menu {
                     Button { model.requestNewItem() } label: { Label("Choose a Template…", systemImage: "square.grid.2x2") }
                     Divider()
@@ -58,8 +61,9 @@ struct VaultView: View {
                 } primaryAction: {
                     model.requestNewItem()
                 }
-                .help("New item (choose a template)")
-                Button { showGenerator = true } label: { Label("Generator", systemImage: "wand.and.stars") }
+                .help("New item (⌘N). Click and hold for a blank item of a given kind.")
+                Button { showGenerator = true } label: { Label("Password Generator", systemImage: "wand.and.stars") }
+                    .help("Generate a password or passphrase")
                 Menu {
                     Button("Organize by Service…") { model.requestOrganize() }
                     Button("Undo Organize") { model.undoOrganize() }.disabled(!model.canUndoOrganize)
@@ -68,7 +72,7 @@ struct VaultView: View {
                 } primaryAction: {
                     model.requestOrganize()
                 }
-                .help("Organize by service: propose folders from each login's website")
+                .help("Organize by service: suggest folders from each login's website")
                 Menu {
                     Button("Import VTF…") { model.beginImport() }
                     Button("Import with This Mac's Key…") { Task { await model.importWithThisMacsKey() } }
@@ -79,9 +83,11 @@ struct VaultView: View {
                     Divider()
                     Button("Devices and Pairing…") { model.sheet = .devices }
                 } label: {
-                    Label("Transfer", systemImage: "arrow.up.arrow.down.square")
+                    Label("Import and Export", systemImage: "arrow.up.arrow.down.square")
                 }
+                .help("Import, export, back up, pair devices")
                 Button { model.requestLock() } label: { Label("Lock", systemImage: "lock.fill") }
+                    .help("Lock Strongroom now (⇧⌘L)")
             }
         }
         .sheet(item: $model.editor) { req in
@@ -105,25 +111,38 @@ struct VaultView: View {
             }
         }
         .sheet(isPresented: $showGenerator) {
-            VStack(alignment: .leading) {
-                GeneratorView(onUse: nil)
-                HStack { Spacer(); Button("Done") { showGenerator = false }.keyboardShortcut(.defaultAction) }
-            }
-            .padding(20)
-            .frame(width: 460)
+            GeneratorSheet()
         }
         .safeAreaInset(edge: .bottom) {
             if let info = model.infoMessage {
-                Text(info)
+                Label(info, systemImage: "checkmark.circle.fill")
                     .font(.callout)
-                    .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(.thinMaterial, in: Capsule())
-                    .padding(8)
+                    .symbolRenderingMode(.multicolor)
+                    .padding(.horizontal, DS.Space.m).padding(.vertical, DS.Space.s)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(.separator.opacity(0.6)))
+                    .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+                    .padding(DS.Space.s)
                     .task(id: info) {
                         try? await Task.sleep(for: .seconds(4))
                         if model.infoMessage == info { model.infoMessage = nil }
                     }
             }
+        }
+    }
+}
+
+/// The toolbar's password generator.
+struct GeneratorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        SheetScaffold(title: "Password Generator", subtitle: "Copied values clear from the clipboard after \(Int(SecureClipboard.defaultClearAfter)) seconds.",
+                      symbol: "wand.and.stars", size: DS.Sheet.small) {
+            GeneratorView(onUse: nil)
+        } footer: {
+            Spacer()
+            Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
         }
     }
 }
@@ -158,9 +177,13 @@ struct ItemListView: View {
             if model.items.isEmpty {
                 if model.query.isEmpty {
                     ContentUnavailableView {
-                        Label(emptyTitle, systemImage: "tray")
+                        Label(emptyTitle, systemImage: emptySymbol)
+                    } description: {
+                        Text(emptyHint)
                     } actions: {
-                        Button("Add an Item") { model.requestNewItem() }
+                        if model.sidebar != .favourites {
+                            Button("Add an Item") { model.requestNewItem() }
+                        }
                     }
                 } else {
                     ContentUnavailableView.search(text: model.query)
@@ -192,6 +215,24 @@ struct ItemListView: View {
         }
     }
 
+    private var emptySymbol: String {
+        switch model.sidebar {
+        case .favourites: return "star"
+        case .folder: return "folder"
+        case .tag: return "tag"
+        default: return "tray"
+        }
+    }
+
+    private var emptyHint: String {
+        switch model.sidebar {
+        case .favourites: return "Star an item to keep it here."
+        case .folder: return "Add an item here, or drag items onto this folder in the sidebar."
+        case .tag: return "Tags are set in an item's editor."
+        default: return "Add a login, card or note, or import from another password manager."
+        }
+    }
+
     private var scopeTitle: String {
         switch model.sidebar {
         case .all: return "All Items"
@@ -210,7 +251,7 @@ struct ScopeHeader: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: DS.Space.s) {
             switch model.sidebar {
             case .folder:
                 Breadcrumb(path: model.currentFolder)
@@ -221,11 +262,13 @@ struct ScopeHeader: View {
             default:
                 Breadcrumb(path: [])
             }
-            Spacer(minLength: 4)
-            Text("\(model.items.count)").font(.caption).monospacedDigit().foregroundStyle(.secondary)
+            Spacer(minLength: DS.Space.xs)
+            Text(model.query.isEmpty ? "\(model.items.count)" : "\(model.items.count) found")
+                .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                .accessibilityLabel("\(model.items.count) items")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .padding(.horizontal, DS.Space.m)
+        .padding(.vertical, DS.Space.s)
     }
 }
 
@@ -240,21 +283,25 @@ struct Breadcrumb: View {
             segments(path.indices.map { $0 })
             // Not enough room: root, …, last two.
             segments(path.count > 2 ? [path.count - 2, path.count - 1] : path.indices.map { $0 }, elided: path.count > 2)
+            // Still not enough: the last folder only.
+            segments(path.isEmpty ? [] : [path.count - 1], elided: path.count > 1, showRoot: path.isEmpty)
         }
         .font(font)
     }
 
-    private func segments(_ indices: [Int], elided: Bool = false) -> some View {
+    private func segments(_ indices: [Int], elided: Bool = false, showRoot: Bool = true) -> some View {
         HStack(spacing: 3) {
-            Button("All Items") { model.selectFolder([]) }
-                .buttonStyle(.link)
-                .foregroundStyle(path.isEmpty ? Color.primary : Color.secondary)
+            if showRoot {
+                Button("All Items") { model.selectFolder([]) }
+                    .buttonStyle(.link)
+                    .foregroundStyle(path.isEmpty ? Color.primary : Color.secondary)
+            }
             if elided {
-                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                if showRoot { Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary) }
                 Text("…").foregroundStyle(.secondary)
             }
             ForEach(indices, id: \.self) { i in
-                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary).accessibilityHidden(true)
                 Button(path[i]) { model.selectFolder(Array(path.prefix(i + 1))) }
                     .buttonStyle(.link)
                     .foregroundStyle(i == path.count - 1 ? Color.primary : Color.secondary)
@@ -271,12 +318,13 @@ struct ItemRow: View {
     var showFolder = false
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: DS.Space.s + 2) {
             Image(systemName: ItemPresentation.symbol(kind: item.kind, tags: item.tags))
                 .frame(width: 22)
                 .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: DS.Space.xxs) {
+                HStack(spacing: DS.Space.xs) {
                     Text(item.title).lineLimit(1)
                     if ReservedTags.isFavourite(item.tags) {
                         Image(systemName: "star.fill").font(.caption2).foregroundStyle(.yellow)
@@ -289,17 +337,20 @@ struct ItemRow: View {
                     Text(sub).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
-            Spacer()
+            Spacer(minLength: DS.Space.xs)
             if weak || reused {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption).foregroundStyle(.orange)
                     .help(reused ? "Password reused elsewhere" : "Weak password")
+                    .accessibilityLabel(reused ? "Password reused elsewhere" : "Weak password")
             }
             if item.hasTotp {
-                Image(systemName: "clock.badge.checkmark").foregroundStyle(.secondary).help("Has a one-time code")
+                Image(systemName: "clock.badge.checkmark").foregroundStyle(.secondary)
+                    .help("Has a one-time code")
+                    .accessibilityLabel("Has a one-time code")
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, DS.Space.xxs)
     }
 }
 
@@ -340,15 +391,23 @@ struct DetailColumn: View {
             case let .folder(id):
                 FolderOverviewView(path: FolderPath.components(id))
             case .health:
-                ContentUnavailableView("Select an item to review it", systemImage: "checkmark.shield")
+                HealthOverview()
             case .ranking:
-                ContentUnavailableView("Fix the top of the list first", systemImage: "list.number",
-                                       description: Text("“Change password…” opens the item with the generator ready. Nothing is replaced until you save."))
+                RankingOverview()
             case .trash:
-                ContentUnavailableView("Trashed items stay for 180 days", systemImage: "trash",
-                                       description: Text("Restore them from the list, or let them expire."))
+                ContentUnavailableView {
+                    Label("Trashed items stay for 180 days", systemImage: "trash")
+                } description: {
+                    Text("Restore them from the list, or let them expire.")
+                }
             default:
-                ContentUnavailableView("Select an item", systemImage: "key.horizontal")
+                ContentUnavailableView {
+                    Label("Select an item", systemImage: "key.horizontal")
+                } description: {
+                    Text("Choose an item in the list to see its details, copy a password or edit it.")
+                } actions: {
+                    Button("New Item") { model.requestNewItem() }
+                }
             }
         }
     }

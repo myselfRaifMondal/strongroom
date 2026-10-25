@@ -11,50 +11,41 @@ struct TemplatePickerView: View {
     let folder: [String]
     @State private var draft: ItemDraft?
 
-    private let columns = [GridItem(.adaptive(minimum: 170), spacing: 10)]
+    private let columns = [GridItem(.adaptive(minimum: 190), spacing: DS.Space.s + 2)]
 
     var body: some View {
         if let draft {
             ItemEditorView(itemId: nil, draft: draft)
         } else {
-            VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("New item").font(.title2.bold())
-                    Text(folder.isEmpty ? "Choose what you are storing." : "In \(folder.joined(separator: " › ")). Choose what you are storing.")
-                        .foregroundStyle(.secondary)
-                }
-                .padding(20)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
-                            ForEach(ItemTemplate.all) { t in
-                                Button { choose(ItemDraft(template: t)) } label: {
-                                    TemplateCard(symbol: t.symbol, name: t.name, summary: t.summary)
-                                }
-                                .buttonStyle(.plain)
+            SheetScaffold(title: "New item",
+                          subtitle: folder.isEmpty ? "Choose what you are storing. Each template has the right fields ready."
+                                                   : "In \(folder.joined(separator: " › ")). Choose what you are storing.",
+                          symbol: "plus.square.on.square", size: DS.Sheet.large) {
+                VStack(alignment: .leading, spacing: DS.Space.l) {
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: DS.Space.s + 2) {
+                        ForEach(ItemTemplate.all) { t in
+                            Button { choose(ItemDraft(template: t)) } label: {
+                                TemplateCard(symbol: t.symbol, name: t.name, summary: t.summary)
                             }
-                        }
-                        Text("Blank item").font(.headline).foregroundStyle(.secondary)
-                        LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
-                            ForEach(ItemKind.allCases) { k in
-                                Button { choose(ItemDraft(kind: k)) } label: {
-                                    TemplateCard(symbol: k.symbolName, name: k.displayName, summary: "No template")
-                                }
-                                .buttonStyle(.plain)
-                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("\(t.name): \(t.summary)")
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
+                    Text("Blank item").font(.sectionTitle).foregroundStyle(.secondary)
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: DS.Space.s + 2) {
+                        ForEach(ItemKind.allCases) { k in
+                            Button { choose(ItemDraft(kind: k)) } label: {
+                                TemplateCard(symbol: k.symbolName, name: k.displayName, summary: "No template")
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Blank \(k.displayName)")
+                        }
+                    }
                 }
-                Divider()
-                HStack {
-                    Spacer()
-                    Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                }
-                .padding(12)
+            } footer: {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
             }
-            .frame(width: 640, height: 600)
         }
     }
 
@@ -69,23 +60,18 @@ struct TemplateCard: View {
     let symbol: String
     let name: String
     let summary: String
-    @State private var hover = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: symbol).font(.title3).foregroundStyle(.tint).frame(width: 26)
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .top, spacing: DS.Space.s + 2) {
+            Image(systemName: symbol).font(.title3).foregroundStyle(.tint).frame(width: 26).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: DS.Space.xxs) {
                 Text(name).font(.callout.weight(.semibold)).lineLimit(1)
                 Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, minHeight: 62, alignment: .topLeading)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(hover ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.15)))
-        .contentShape(RoundedRectangle(cornerRadius: 8))
-        .onHover { hover = $0 }
+        .card(minHeight: 64)
     }
 }
 
@@ -124,24 +110,21 @@ struct ItemEditorView: View {
     var body: some View {
         let g = groups
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: template?.symbol ?? draft.kind.symbolName).font(.title2).foregroundStyle(.tint)
-                Text(itemId == nil ? "New \(template?.name ?? draft.kind.displayName)" : "Edit \(template?.name ?? draft.kind.displayName)")
-                    .font(.title3.bold())
-                Spacer()
-                if WebsiteOpener.url(draft.urls) != nil {
-                    Button { WebsiteOpener.open(draft.urls) } label: { Label("Open Website", systemImage: "safari") }
-                        .controlSize(.small)
-                        .help("Opens the website in your browser to change the password there")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: DS.Space.m) {
+                    editorTitle
+                    Spacer(minLength: DS.Space.s)
+                    editorHeaderControls
                 }
-                Toggle("Show hidden values", isOn: $revealSecrets).toggleStyle(.switch).controlSize(.small)
+                VStack(alignment: .leading, spacing: DS.Space.s) {
+                    editorTitle
+                    HStack(spacing: DS.Space.m) { editorHeaderControls }
+                }
             }
-            .padding(.horizontal, 20).padding(.vertical, 12)
+            .padding(.horizontal, DS.Space.xl).padding(.top, DS.Space.l).padding(.bottom, DS.Space.m)
             if changePassword {
-                Text("Change the password on the website first (Open Website), then pick a new one in the generator, use it there, and save here. Nothing is replaced until you save.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .padding(.horizontal, 20).padding(.bottom, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                Callout(.info, "Change the password on the website first (Open Website), then pick a new one in the generator, use it there, and save here. Nothing is replaced until you save.")
+                    .padding(.horizontal, DS.Space.xl).padding(.bottom, DS.Space.s)
             }
             Divider()
             Form {
@@ -161,7 +144,7 @@ struct ItemEditorView: View {
                                 Button(String(repeating: "   ", count: p.count - 1) + p.last!) { draft.folder = FolderPath.id(p) }
                             }
                         } label: {
-                            Image(systemName: "folder")
+                            Label("Choose Folder", systemImage: "folder").labelStyle(.iconOnly)
                         }
                         .menuStyle(.borderlessButton)
                         .fixedSize()
@@ -256,9 +239,11 @@ struct ItemEditorView: View {
             }
             .formStyle(.grouped)
             Divider()
-            HStack {
-                if let t = template { Label("Template: \(t.name)", systemImage: t.symbol).font(.caption).foregroundStyle(.secondary) }
-                Spacer()
+            HStack(spacing: DS.Space.s) {
+                if let t = template {
+                    Label("Template: \(t.name)", systemImage: t.symbol).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: DS.Space.s)
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(itemId == nil ? "Add" : "Save") {
                     if !pendingPromotions.isEmpty {
@@ -269,8 +254,10 @@ struct ItemEditorView: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!draft.isValid)
+                .help(draft.isValid ? "" : "Give the item a title first")
             }
-            .padding(12)
+            .padding(.horizontal, DS.Space.xl)
+            .padding(.vertical, DS.Space.m)
         }
         .confirmationDialog(promotionTitle, isPresented: $confirmPromotion) {
             Button("Move and Retitle") {
@@ -297,7 +284,8 @@ struct ItemEditorView: View {
         .onChange(of: draft.urls) { _, _ in updateSuggestion() }
         .onChange(of: draft.username) { _, _ in updateSuggestion() }
         .onChange(of: draft.kind) { _, _ in updateSuggestion() }
-        .frame(width: 640, height: 720)
+        .frame(minWidth: 520, idealWidth: DS.Sheet.large.width, maxWidth: 1000,
+               minHeight: DS.Sheet.minHeight + 80, idealHeight: 720)
         .popover(isPresented: $showPasteCodes, arrowEdge: .top) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Paste recovery codes").font(.headline)
@@ -324,6 +312,28 @@ struct ItemEditorView: View {
         }
     }
 
+    // MARK: header
+
+    private var editorTitle: some View {
+        HStack(spacing: DS.Space.s + 2) {
+            Image(systemName: template?.symbol ?? draft.kind.symbolName).font(.title2).foregroundStyle(.tint)
+                .accessibilityHidden(true)
+            Text(itemId == nil ? "New \(template?.name ?? draft.kind.displayName)" : "Edit \(template?.name ?? draft.kind.displayName)")
+                .font(.sheetTitle)
+                .lineLimit(1)
+        }
+    }
+
+    @ViewBuilder private var editorHeaderControls: some View {
+        if WebsiteOpener.url(draft.urls) != nil {
+            Button { WebsiteOpener.open(draft.urls) } label: { Label("Open Website", systemImage: "safari") }
+                .controlSize(.small)
+                .help("Opens the website in your browser to change the password there")
+        }
+        Toggle("Show hidden values", isOn: $revealSecrets).toggleStyle(.switch).controlSize(.small)
+            .fixedSize()
+    }
+
     // MARK: sections
 
     @ViewBuilder private var builtInFields: some View {
@@ -340,9 +350,9 @@ struct ItemEditorView: View {
                         } else {
                             SecureField(label, text: $draft.password)
                         }
-                        Button { revealPassword.toggle() } label: { Image(systemName: revealPassword ? "eye.slash" : "eye") }
+                        Button { revealPassword.toggle() } label: { Label(revealPassword ? "Hide password" : "Show password", systemImage: revealPassword ? "eye.slash" : "eye").labelStyle(.iconOnly) }
                             .buttonStyle(.borderless)
-                        Button { showGenerator = true } label: { Image(systemName: "wand.and.stars") }
+                        Button { showGenerator = true } label: { Label("Generate password", systemImage: "wand.and.stars").labelStyle(.iconOnly) }
                             .buttonStyle(.borderless).help("Generate")
                             .popover(isPresented: $showGenerator) {
                                 GeneratorView { value in
@@ -359,8 +369,11 @@ struct ItemEditorView: View {
         }
         if draft.kind.usesTOTP {
             Section {
-                TextField("One-time code secret (base32 or otpauth://)", text: $draft.totp)
-                    .font(.system(.body, design: .monospaced))
+                LabeledContent("One-time code secret") {
+                    TextField("One-time code secret", text: $draft.totp, prompt: Text("Base32 or otpauth://"))
+                        .labelsHidden()
+                        .font(.secret)
+                }
                 if !draft.totp.trimmingCharacters(in: .whitespaces).isEmpty {
                     TOTPPreview(secret: draft.totp)
                 }
@@ -374,7 +387,7 @@ struct ItemEditorView: View {
                             get: { i < draft.urls.count ? draft.urls[i] : "" },
                             set: { if i < draft.urls.count { draft.urls[i] = $0 } }))
                         Button { draft.urls.remove(at: i); if draft.urls.isEmpty { draft.urls = [""] } } label: {
-                            Image(systemName: "minus.circle")
+                            Label("Remove website", systemImage: "minus.circle").labelStyle(.iconOnly)
                         }
                         .buttonStyle(.borderless)
                     }
@@ -515,7 +528,7 @@ struct ItemEditorView: View {
     }
 
     private func removeButton(_ id: UUID) -> some View {
-        Button { draft.fields.removeAll { $0.id == id } } label: { Image(systemName: "minus.circle") }
+        Button { draft.fields.removeAll { $0.id == id } } label: { Label("Remove", systemImage: "minus.circle").labelStyle(.iconOnly) }
             .buttonStyle(.borderless).help("Remove")
     }
 }

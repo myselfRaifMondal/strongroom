@@ -157,8 +157,8 @@ struct QuickAccessView: View {
     /// Unlock state. Shows no item data: only the lock, Touch ID and the
     /// password + Secret Key fallback.
     private var locked: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "lock.fill").font(.largeTitle).foregroundStyle(.secondary)
+        VStack(spacing: DS.Space.m) {
+            Image(systemName: "lock.fill").font(.largeTitle).foregroundStyle(.secondary).accessibilityHidden(true)
             Text("Strongroom is locked").font(.title3.bold())
             if model.touchIDAvailableNow {
                 Button { Task { await controller.unlockWithTouchID() } } label: {
@@ -169,18 +169,19 @@ struct QuickAccessView: View {
                 Text(DeviceUnlock.explain(model.gateReason))
                     .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
-            Form {
-                SecureField("Master password", text: $password)
+            VStack(spacing: DS.Space.s) {
+                SecureField("Master password", text: $password, prompt: Text("Master password"))
+                    .textFieldStyle(.roundedBorder)
                     .focused($focus, equals: .password)
                     .onSubmit { focus = .secretKey }
-                SecureField("Secret Key (SR1-…)", text: $secretKey)
+                SecureField("Secret Key", text: $secretKey, prompt: Text("Secret Key (SR1-…)"))
+                    .textFieldStyle(.roundedBorder)
                     .focused($focus, equals: .secretKey)
                     .onSubmit(submitPassword)
             }
-            .formStyle(.grouped)
-            .frame(maxWidth: 420)
-            .scrollDisabled(true)
-            HStack(spacing: 12) {
+            .controlSize(.large)
+            .frame(maxWidth: 360)
+            HStack(spacing: DS.Space.m) {
                 Button("Open Strongroom") { controller.openMainWindow() }
                 Button("Unlock", action: submitPassword)
                     .keyboardShortcut(.defaultAction)
@@ -188,10 +189,11 @@ struct QuickAccessView: View {
                 if model.busy { ProgressView().controlSize(.small) }
             }
             if let error = controller.unlockError {
-                Text(error).font(.caption).foregroundStyle(.red).multilineTextAlignment(.center)
+                Text(error).font(.callout).foregroundStyle(.red).multilineTextAlignment(.center)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, DS.Space.s)
     }
 
     private var unavailable: some View {

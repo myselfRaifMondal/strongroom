@@ -14,61 +14,68 @@ struct SidebarView: View {
     }
 
     var body: some View {
-        List(selection: selection) {
-            Section {
-                SidebarRow(title: "All Items", symbol: "tray.full", count: model.allItems.count)
-                    .tag(SidebarSelection.all)
-                    .dropDestination(for: String.self) { strings, _ in
-                        drop(strings, to: [])
+        // The New Folder bar sits below the list, not over it, so the list
+        // ends above it and its last rows are never hidden in short windows.
+        VStack(spacing: 0) {
+            List(selection: selection) {
+                Section {
+                    SidebarRow(title: "All Items", symbol: "tray.full", count: model.allItems.count)
+                        .tag(SidebarSelection.all)
+                        .dropDestination(for: String.self) { strings, _ in
+                            drop(strings, to: [])
+                        }
+                        .help("Drop items here to take them out of their folder")
+                    SidebarRow(title: "Favourites", symbol: "star", count: model.favouriteCount)
+                        .tag(SidebarSelection.favourites)
+                }
+                Section("Folders") {
+                    if model.tree.isEmpty {
+                        Text("No folders yet. Use New Folder below, or give an item a folder like “Social/Instagram”.")
+                            .font(.callout).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .selectionDisabled()
                     }
-                    .help("Drop items here to take them out of their folder")
-                SidebarRow(title: "Favourites", symbol: "star", count: model.favouriteCount)
-                    .tag(SidebarSelection.favourites)
-            }
-            Section("Folders") {
-                if model.tree.isEmpty {
-                    Text("Add a folder, or give an item a folder like “Social/Instagram”.")
-                        .font(.caption).foregroundStyle(.secondary)
-                        .selectionDisabled()
-                }
-                ForEach(model.tree) { node in
-                    FolderTreeRow(node: node, expanded: $expanded)
-                }
-            }
-            if !model.userTags.isEmpty {
-                Section("Tags") {
-                    ForEach(model.userTags, id: \.self) { tag in
-                        SidebarRow(title: tag, symbol: "tag", count: model.count(tag: tag))
-                            .tag(SidebarSelection.tag(tag))
+                    ForEach(model.tree) { node in
+                        FolderTreeRow(node: node, expanded: $expanded)
                     }
                 }
-            }
-            Section("Tools") {
-                HStack {
-                    Label("Password Health", systemImage: "checkmark.shield")
-                    Spacer()
-                    if let score = model.health?.securityScore {
-                        Text("\(score)").font(.caption.monospacedDigit().weight(.semibold))
-                            .foregroundStyle(HealthView.color(for: score))
+                if !model.userTags.isEmpty {
+                    Section("Tags") {
+                        ForEach(model.userTags, id: \.self) { tag in
+                            SidebarRow(title: tag, symbol: "tag", count: model.count(tag: tag))
+                                .tag(SidebarSelection.tag(tag))
+                        }
                     }
                 }
-                .tag(SidebarSelection.health)
-                HStack {
-                    Label("Security Ranking", systemImage: "list.number")
-                    Spacer()
-                    if model.ranking.dueCount > 0 {
-                        Text("\(model.ranking.dueCount)").font(.caption.monospacedDigit().weight(.semibold))
-                            .foregroundStyle(.orange)
-                            .help("\(model.ranking.dueCount) due for a change")
+                Section("Tools") {
+                    HStack {
+                        Label("Password Health", systemImage: "checkmark.shield")
+                        Spacer()
+                        if let score = model.health?.securityScore {
+                            Text("\(score)").font(.caption.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(HealthView.color(for: score))
+                                .help("Security score \(score) of 100")
+                                .accessibilityLabel("Security score \(score)")
+                        }
                     }
+                    .tag(SidebarSelection.health)
+                    HStack {
+                        Label("Security Ranking", systemImage: "list.number")
+                        Spacer()
+                        if model.ranking.dueCount > 0 {
+                            Text("\(model.ranking.dueCount)").font(.caption.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(.orange)
+                                .help("\(model.ranking.dueCount) due for a change")
+                                .accessibilityLabel("\(model.ranking.dueCount) due for a change")
+                        }
+                    }
+                    .tag(SidebarSelection.ranking)
+                    SidebarRow(title: "Trash", symbol: "trash", count: model.trash.count)
+                        .tag(SidebarSelection.trash)
                 }
-                .tag(SidebarSelection.ranking)
-                SidebarRow(title: "Trash", symbol: "trash", count: model.trash.count)
-                    .tag(SidebarSelection.trash)
             }
-        }
-        .listStyle(.sidebar)
-        .safeAreaInset(edge: .bottom) {
+            .listStyle(.sidebar)
+            Divider()
             HStack {
                 Button {
                     model.sheet = .folderName(.create(parent: model.currentFolder))
@@ -79,8 +86,8 @@ struct SidebarView: View {
                 .help(model.currentFolder.isEmpty ? "New top-level folder" : "New folder inside \(model.currentFolder.joined(separator: " › "))")
                 Spacer()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.horizontal, DS.Space.m)
+            .padding(.vertical, DS.Space.s)
         }
         .onAppear { expanded.formUnion(model.tree.map(\.id)) }
         .onChange(of: model.sidebar, initial: true) { _, new in
@@ -169,29 +176,29 @@ struct FolderNameSheet: View {
     @State private var name = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(title).font(.title3.bold())
-            Text(explanation).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            TextField("Folder name", text: $name).textFieldStyle(.roundedBorder)
-            if !name.isEmpty && FolderPath.validName(name) == nil {
-                Text("A folder name cannot contain “/”.").font(.caption).foregroundStyle(.red)
-            }
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(isRename ? "Rename" : "Create") {
-                    switch mode {
-                    case let .create(parent): model.createFolder(parent: parent, name: name)
-                    case let .rename(path): model.renameFolder(path, to: name)
-                    }
-                    dismiss()
+        SheetScaffold(title: title, subtitle: explanation, symbol: isRename ? "pencil" : "folder.badge.plus",
+                      size: DS.Sheet.small, scrolls: false) {
+            VStack(alignment: .leading, spacing: DS.Space.s) {
+                TextField("Folder name", text: $name, prompt: Text("Folder name"))
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Folder name")
+                if !name.isEmpty && FolderPath.validName(name) == nil {
+                    Text("A folder name cannot contain “/”.").font(.callout).foregroundStyle(.red)
                 }
-                .keyboardShortcut(.defaultAction)
-                .disabled(FolderPath.validName(name) == nil)
             }
+        } footer: {
+            Spacer()
+            Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+            Button(isRename ? "Rename" : "Create") {
+                switch mode {
+                case let .create(parent): model.createFolder(parent: parent, name: name)
+                case let .rename(path): model.renameFolder(path, to: name)
+                }
+                dismiss()
+            }
+            .keyboardShortcut(.defaultAction)
+            .disabled(FolderPath.validName(name) == nil)
         }
-        .padding(20)
-        .frame(width: 400)
         .onAppear { if case let .rename(path) = mode { name = path.last ?? "" } }
     }
 
@@ -247,23 +254,22 @@ struct MoveItemsSheet: View {
     @State private var typed = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(itemIds.count == 1 ? "Move “\(model.summary(itemIds[0])?.title ?? "item")”" : "Move \(itemIds.count) items")
-                .font(.title3.bold())
+        SheetScaffold(title: itemIds.count == 1 ? "Move “\(model.summary(itemIds[0])?.title ?? "item")”" : "Move \(itemIds.count) items",
+                      subtitle: "Choose a folder, or type a new path such as Social/Instagram.",
+                      symbol: "folder", size: DS.Sheet.small, scrolls: false) {
             Form {
                 FolderPicker(path: $path)
                 TextField("Or type a path", text: $typed, prompt: Text("Social/Instagram"))
                     .onChange(of: typed) { _, t in path = FolderPath.components(t) }
             }
             .formStyle(.grouped)
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Move") { model.moveItems(itemIds, to: path); dismiss() }.keyboardShortcut(.defaultAction)
-            }
+            .scrollDisabled(true)
+            .padding(.horizontal, -DS.Space.l)
+        } footer: {
+            Spacer()
+            Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+            Button("Move") { model.moveItems(itemIds, to: path); dismiss() }.keyboardShortcut(.defaultAction)
         }
-        .padding(20)
-        .frame(width: 440)
         .onAppear {
             if itemIds.count == 1, let f = model.summary(itemIds[0])?.folder { path = FolderPath.components(f) }
         }
@@ -277,32 +283,32 @@ struct MoveFolderSheet: View {
     @State private var parent: [String] = []
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Move “\(path.last ?? "")” and everything in it").font(.title3.bold())
-            Form {
-                Picker("Into", selection: Binding(get: { FolderPath.id(parent) }, set: { parent = FolderPath.components($0) })) {
-                    Text("Top level").tag("")
-                    ForEach(FolderTree.allPaths(model.tree).filter { !FolderPath.isPrefix(path, of: $0) }, id: \.self) { p in
-                        Text(String(repeating: "    ", count: p.count - 1) + p.last!).tag(FolderPath.id(p))
+        SheetScaffold(title: "Move “\(path.last ?? "")” and everything in it", symbol: "folder", size: DS.Sheet.small, scrolls: false) {
+            VStack(alignment: .leading, spacing: DS.Space.s) {
+                Form {
+                    Picker("Into", selection: Binding(get: { FolderPath.id(parent) }, set: { parent = FolderPath.components($0) })) {
+                        Text("Top level").tag("")
+                        ForEach(FolderTree.allPaths(model.tree).filter { !FolderPath.isPrefix(path, of: $0) }, id: \.self) { p in
+                            Text(String(repeating: "    ", count: p.count - 1) + p.last!).tag(FolderPath.id(p))
+                        }
                     }
                 }
+                .formStyle(.grouped)
+                .scrollDisabled(true)
+                .padding(.horizontal, -DS.Space.l)
+                if let target = FolderOps.moved(path, toParent: parent) {
+                    HintText("New location: \(target.joined(separator: " › "))")
+                } else {
+                    HintText("It is already there.")
+                }
             }
-            .formStyle(.grouped)
-            if let target = FolderOps.moved(path, toParent: parent) {
-                Text("New location: \(target.joined(separator: " › "))").font(.caption).foregroundStyle(.secondary)
-            } else {
-                Text("It is already there.").font(.caption).foregroundStyle(.secondary)
-            }
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Move") { model.moveFolder(path, toParent: parent); dismiss() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!FolderOps.canMove(path, toParent: parent))
-            }
+        } footer: {
+            Spacer()
+            Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+            Button("Move") { model.moveFolder(path, toParent: parent); dismiss() }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!FolderOps.canMove(path, toParent: parent))
         }
-        .padding(20)
-        .frame(width: 440)
         .onAppear { parent = Array(path.dropLast()) }
     }
 }
