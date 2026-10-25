@@ -71,7 +71,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [container_parse, chunk_decrypt, payload_decode]
+        target:
+          - container_parse
+          - chunk_decrypt
+          - payload_decode
+          - csv_import
+          - pairing_parse
+          - totp_uri
+          - vault_header
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Rust toolchain (dated nightly from fuzz/rust-toolchain.toml)

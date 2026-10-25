@@ -1,0 +1,1 @@
+otpauth://totp/a%20b?issuer=Ex%26ample&secret=JBSW%59%33DPEHPK3PXP&image=x+y

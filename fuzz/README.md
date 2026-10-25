@@ -1,6 +1,7 @@
 # Fuzzing
 
-cargo-fuzz (libFuzzer) targets for `vtf-core`. This crate is its own
+cargo-fuzz (libFuzzer) targets for the parsers in `vtf-core` and
+`vault-core` that read untrusted input. This crate is its own
 workspace and is never part of the product build.
 
 | Target | What it fuzzes |
@@ -8,6 +9,10 @@ workspace and is never part of the product build.
 | `container_parse` | Header and slot-table parser and the device unlock path |
 | `chunk_decrypt` | Chunk decryption under structured edits of a valid file |
 | `payload_decode` | Strict CBOR / payload decoder |
+| `csv_import` | CSV parser and the column mapping for every export source |
+| `pairing_parse` | `SR1PAIR:` pairing payload from another device |
+| `totp_uri` | TOTP secret and `otpauth://` URI parser |
+| `vault_header` | Plaintext vault header (`.hdr`) and the device key wrap blob |
 
 Each file in `fuzz_targets/` lists the invariants it checks.
 
@@ -33,7 +38,7 @@ You need cargo-fuzz and the dated nightly named in
 cargo install cargo-fuzz
 ```
 
-Seed the corpus from `vectors/` (creates `fuzz/corpus/`, which is not
+Seed the corpus from `vectors/` and `fuzz/seeds/` (creates `fuzz/corpus/`, which is not
 committed), then run one target. This example runs for one hour:
 
 ```sh

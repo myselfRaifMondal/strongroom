@@ -9,7 +9,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 cd "$here"
 targets=("$@")
-[ ${#targets[@]} -gt 0 ] || targets=(container_parse chunk_decrypt payload_decode)
+[ ${#targets[@]} -gt 0 ] || targets=(container_parse chunk_decrypt payload_decode csv_import pairing_parse totp_uri vault_header)
 triple=()
 [ -z "${FUZZ_TRIPLE:-}" ] || triple=(--target "$FUZZ_TRIPLE")
 for t in "${targets[@]}"; do

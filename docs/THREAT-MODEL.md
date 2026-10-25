@@ -81,7 +81,11 @@ A crafted `.vtf` or CSV file aimed at crashing or exploiting the importer.
   CBOR decoder at all. With the credentials (or for CSV, which is not
   authenticated), the strict decoder enforces depth ≤ 16, length and count
   limits, and canonical encoding; `vtf-core` has `#![forbid(unsafe_code)]`.
-- Fuzzed with libFuzzer + ASan (parser, chunk path, payload decoder).
+- Fuzzed with libFuzzer + ASan: the VTF header and slot parser, chunk
+  path and payload decoder, plus the CSV parser and column mapping, the
+  pairing payload, TOTP / `otpauth://` URIs and the vault header and
+  device wrap blob (`fuzz/`). CSV has no size or row limit; the whole
+  file is held in memory.
 - Residual: a 4096-chunk file means up to 256 MiB of plaintext in memory
   during import. That is a bounded but large allocation.
 
