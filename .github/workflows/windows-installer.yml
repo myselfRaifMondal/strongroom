@@ -72,7 +72,7 @@ jobs:
             rid: win-arm64
     steps:
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Rust toolchain
         run: |
           rustup show active-toolchain
@@ -94,7 +94,7 @@ jobs:
           $crt = $deps | Where-Object { $_ -match '^(vcruntime|msvcp|vcomp|concrt)\d' }
           if ($crt) { "::error::strongroom_ffi.dll still imports the VC++ runtime: $($crt -join ', ')"; exit 1 }
           "OK: strongroom_ffi.dll does not need the Visual C++ Redistributable"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: installer-native-${{ matrix.rid }}
           path: apps/windows/native/${{ matrix.rid }}/strongroom_ffi.dll
@@ -106,10 +106,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Cache uniffi-bindgen-cs
         id: cache-bindgen
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/bin/uniffi-bindgen-cs.exe
           key: uniffi-bindgen-cs-${{ env.UNIFFI_BINDGEN_CS_TAG }}-windows
@@ -119,7 +119,7 @@ jobs:
       - name: Generate
         shell: pwsh
         run: apps/windows/scripts/gen-bindings.ps1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: installer-bindings-cs
           path: apps/windows/src/Strongroom.Core/Generated/strongroom.cs
@@ -145,8 +145,8 @@ jobs:
       VERSION_NUMERIC: ${{ needs.version.outputs.numeric }}
     steps:
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "8.0.x"
       - uses: actions/download-artifact@v4
@@ -277,7 +277,7 @@ jobs:
             "MpCmdRun exit code: $LASTEXITCODE (0 = no threat found, 2 = threat found)"
           }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pkg-${{ matrix.arch }}
           path: apps/windows/installer/out/*
@@ -290,7 +290,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: apps/windows/installer
       - uses: actions/download-artifact@v4
@@ -308,7 +308,7 @@ jobs:
     runs-on: windows-11-arm
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: apps/windows/installer
       - uses: actions/download-artifact@v4
@@ -335,7 +335,7 @@ jobs:
           cd dist
           sha256sum Strongroom-* | tee SHA256SUMS.txt
           ls -l
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: strongroom-windows-installers
           path: dist/

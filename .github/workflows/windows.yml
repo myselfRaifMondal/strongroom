@@ -43,7 +43,7 @@ jobs:
       # Keep LF line endings: vectors/manifest.json and other fixtures are
       # compared byte-for-byte (the repo has no .gitattributes).
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Rust toolchain
         run: |
           rustup show active-toolchain
@@ -59,7 +59,7 @@ jobs:
         run: |
           $dumpbin = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio" -Recurse -Filter dumpbin.exe -ErrorAction SilentlyContinue | Where-Object FullName -match 'Hostx64\\x64' | Select-Object -First 1
           if ($dumpbin) { & $dumpbin.FullName /exports apps/windows/native/${{ matrix.rid }}/strongroom_ffi.dll | Select-String 'uniffi_strongroom_ffi_fn_' | Measure-Object | ForEach-Object { "exported uniffi fn symbols: $($_.Count)" } }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.rid }}
           path: apps/windows/native/${{ matrix.rid }}/strongroom_ffi.dll
@@ -73,7 +73,7 @@ jobs:
       # Keep LF line endings: vectors/manifest.json and other fixtures are
       # compared byte-for-byte (the repo has no .gitattributes).
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: Swatinem/rust-cache@v2
         with:
           key: tests
@@ -89,10 +89,10 @@ jobs:
       # Keep LF line endings: vectors/manifest.json and other fixtures are
       # compared byte-for-byte (the repo has no .gitattributes).
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Cache uniffi-bindgen-cs
         id: cache-bindgen
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/bin/uniffi-bindgen-cs.exe
           key: uniffi-bindgen-cs-${{ env.UNIFFI_BINDGEN_CS_TAG }}-windows
@@ -102,7 +102,7 @@ jobs:
       - name: Generate
         shell: pwsh
         run: apps/windows/scripts/gen-bindings.ps1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bindings-cs
           path: apps/windows/src/Strongroom.Core/Generated/strongroom.cs
@@ -120,8 +120,8 @@ jobs:
       # Keep LF line endings: vectors/manifest.json and other fixtures are
       # compared byte-for-byte (the repo has no .gitattributes).
       - run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "8.0.x"
       - uses: actions/download-artifact@v4
@@ -208,7 +208,7 @@ jobs:
           Stop-Process -Id $p.Id -Force
           "app process killed"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: strongroom-windows
