@@ -117,7 +117,7 @@ fun CreateVaultScreen(nav: Nav) {
                         MasterPasswordRules.problem(password, confirm)?.let { throw IllegalStateException(it) }
                         check(!files.exists(n)) { "A vault named \"$n\" already exists." }
                         val secretKey = generateSecretKey()
-                        check(secretKey.isNotBlank()) { "The core returned no Secret Key (core not implemented yet)." }
+                        check(secretKey.isNotBlank()) { "The core returned an empty Secret Key, so the vault was not created." }
                         val vault = core { Vault.create(files.vaultPath(n), password, secretKey, Clock.nowSeconds()) }
                         VaultUnlocker(context, n).recordPasswordUnlock()
                         Session.open(n, vault)

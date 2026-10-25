@@ -134,7 +134,7 @@ final class SoftwareDeviceKey: DeviceKeyAgreement, @unchecked Sendable {
         let base = try tempDir()
         defer { try? FileManager.default.removeItem(at: base) }
         let dir = try DataDirectory(prepared: base)
-        // UnlockGate's constructor may be a stub (main) or real (core-vault).
+        // UnlockGate's constructor may still report Unsupported on some cores.
         guard let du = try? DeviceUnlock(dir: dir) else { return }
         #expect(!du.isEnrolled)
         #expect(!du.enrollmentChanged())

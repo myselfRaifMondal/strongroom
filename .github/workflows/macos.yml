@@ -29,10 +29,6 @@ jobs:
   macos:
     name: build, test, app bundle + launch, CLI round-trip
     runs-on: macos-latest
-    env:
-      
-      # The real core is on main: an Unsupported result is a failure.
-      STRONGROOM_REQUIRE_CORE: "1"
     steps:
       - uses: actions/checkout@v7
 
@@ -74,9 +70,9 @@ jobs:
           apps/macos/out/strongroom-mac-cli roundtrip --dir "$dir"
           code=$?
           set -e
-          if [ "$code" -eq 3 ] && [ "$STRONGROOM_REQUIRE_CORE" != "1" ]; then
-            echo "::warning title=Core not implemented::strongroom_ffi returned Unsupported; the round-trip could not run against the stub core."
-            exit 0
+          if [ "$code" -eq 3 ]; then
+            echo "::error title=Core reported Unsupported::strongroom_ffi returned Unsupported during the round-trip; the linked core is missing a feature it should have."
+            exit 3
           fi
           [ "$code" -eq 0 ] || exit "$code"
           echo "--- import of the exported file via 'import --in' (Phase 3 entry point) ---"

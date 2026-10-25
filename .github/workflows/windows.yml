@@ -112,10 +112,6 @@ jobs:
     name: build, test, CLI round-trip, app launch
     needs: [native, bindings]
     runs-on: windows-latest
-    env:
-      
-      # The real core is on main: an Unsupported result is a failure.
-      STRONGROOM_REQUIRE_CORE: "1"
     steps:
       # Keep LF line endings: vectors/manifest.json and other fixtures are
       # compared byte-for-byte (the repo has no .gitattributes).
@@ -166,9 +162,9 @@ jobs:
           $dir = Join-Path $env:RUNNER_TEMP "roundtrip"
           apps/windows/out/cli/strongroom-cli.exe roundtrip --dir $dir
           $code = $LASTEXITCODE
-          if ($code -eq 3 -and $env:STRONGROOM_REQUIRE_CORE -ne '1') {
-            "::warning title=Core not implemented::strongroom_ffi returned Unsupported; the round-trip could not run against the stub core."
-            exit 0
+          if ($code -eq 3) {
+            "::error title=Core reported Unsupported::strongroom_ffi returned Unsupported during the round-trip; the linked core is missing a feature it should have."
+            exit 3
           }
           if ($code -ne 0) { exit $code }
           "--- import of the exported file via 'import --in' (Phase 3 entry point) ---"

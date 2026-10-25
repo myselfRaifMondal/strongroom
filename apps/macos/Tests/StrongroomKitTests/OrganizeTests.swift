@@ -269,7 +269,7 @@ private func login(_ id: String, _ title: String, user: String?, url: String?, f
     /// its original input again (password, fields, tags untouched throughout).
     @Test func undoRestoresExactly() async throws {
         let sk = generateSecretKey()
-        guard !sk.isEmpty else { return } // stub core
+        guard !sk.isEmpty else { return } // core returned an empty Secret Key
         let base = FileManager.default.temporaryDirectory.appendingPathComponent("strongroom-organize-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: base) }

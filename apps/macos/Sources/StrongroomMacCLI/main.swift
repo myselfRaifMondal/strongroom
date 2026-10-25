@@ -8,7 +8,7 @@
 //   STRONGROOM_ITEM_PASSWORD  optional password for `add`
 //
 // Exit codes: 0 ok, 1 failure, 2 usage, 3 the core reported Unsupported
-// (FFI bodies not implemented yet).
+// (a feature missing from the linked core; CI treats it as a failure).
 
 import Foundation
 import StrongroomKit
@@ -277,7 +277,7 @@ func probe() -> Int32 {
     #endif
     out("OS: macOS \(v) (\(arch))")
     let sk = generateSecretKey()
-    out("FFI: strongroom_ffi linked; generate_secret_key -> \(sk.isEmpty ? "empty (core stub)" : "\(sk.count) chars")")
+    out("FFI: strongroom_ffi linked; generate_secret_key -> \(sk.isEmpty ? "empty (no Secret Key returned)" : "\(sk.count) chars")")
     let strength = estimateStrength(password: "correct horse battery staple")
     out("FFI: estimate_strength -> score=\(strength.score) entropy=\(String(format: "%.1f", strength.entropyBits))")
 

@@ -189,7 +189,7 @@ final class AppModel: ObservableObject {
         guard let dir else { return }
         let secretKey = generateSecretKey()
         guard !secretKey.isEmpty else {
-            errorMessage = "The core could not generate a Secret Key (core not implemented in this build)."
+            errorMessage = "The core returned an empty Secret Key, so the vault was not created."
             return
         }
         busy = true
