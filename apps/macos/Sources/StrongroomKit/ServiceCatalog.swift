@@ -649,7 +649,6 @@ public enum ServiceCatalog {
         KnownService("Codeforces", .learning, ["codeforces.com"]),
         KnownService("Moodle", .learning, ["moodlecloud.com"], multiTenant: true),
         KnownService("Blackboard", .learning, ["blackboard.com"], multiTenant: true),
-        KnownService("Google Classroom", .learning, ["classroom.google.com"]),
         KnownService("Skillshare", .learning, ["skillshare.com"]),
         KnownService("Pluralsight", .learning, ["pluralsight.com"]),
         KnownService("Udacity", .learning, ["udacity.com"]),

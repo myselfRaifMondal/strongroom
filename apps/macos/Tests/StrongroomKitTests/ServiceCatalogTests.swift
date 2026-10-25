@@ -314,7 +314,6 @@ import Testing
         ("https://www.faceit.com/", "FACEIT", .gaming),
         ("https://login.nexusmods.com/", "Nexus Mods", .gaming),
         ("https://accounts.dream11.com/", "Dream11", .gaming),
-        ("https://my.classroom.google.com/", "Google Classroom", .learning),
         ("https://secure.skillshare.com/", "Skillshare", .learning),
         ("https://app.pluralsight.com/", "Pluralsight", .learning),
         ("https://www.udacity.com/", "Udacity", .learning),
@@ -418,7 +417,8 @@ import Testing
         #expect(ServiceCatalog.classify(url: "https://developer.apple.com/account")?.service == "Apple Developer")
         #expect(ServiceCatalog.classify(url: "https://appstoreconnect.apple.com")?.category == .developerCloud)
         #expect(ServiceCatalog.classify(url: "https://www.apple.com")?.service == "Apple Account")
-        #expect(ServiceCatalog.classify(url: "https://classroom.google.com/u/0")?.service == "Google Classroom")
+        // A Classroom login is a full Google account, so it stays with Google (critical).
+        #expect(ServiceCatalog.classify(url: "https://classroom.google.com/u/0")?.service == "Google")
         #expect(ServiceCatalog.classify(url: "https://cloud.ibm.com/login")?.service == "IBM Cloud")
         #expect(ServiceCatalog.classify(url: "https://www.ibm.com")?.known == false)
     }
