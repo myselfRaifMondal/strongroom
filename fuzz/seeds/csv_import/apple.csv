@@ -1,0 +1,2 @@
+﻿Title,URL,Username,Password,Notes,OTPAuth
+Example,https://example.test/,erin@example.test,pw5,a note,otpauth://totp/Example:erin?secret=JBSWY3DPEHPK3PXP&issuer=Example

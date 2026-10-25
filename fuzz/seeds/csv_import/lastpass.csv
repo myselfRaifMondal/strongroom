@@ -1,0 +1,3 @@
+url,username,password,totp,extra,name,grouping,fav
+https://shop.example.test,carol,pw3,,,Shop,Personal,0
+http://sn,,,,secret note body,Wifi,Home,0

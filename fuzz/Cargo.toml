@@ -15,6 +15,8 @@ members = ["."]
 [dependencies]
 libfuzzer-sys = "0.4"
 vtf-core = { path = "../crates/vtf-core" }
+# CSV, pairing, TOTP and vault header parsers (path dependency only).
+vault-core = { path = "../crates/vault-core" }
 # Software P-256 ECDH standing in for the hardware DeviceKey (test only; the
 # same crate/version vtf-core already uses as a dev-dependency oracle).
 p256 = { version = "0.14", default-features = false, features = ["ecdh", "arithmetic"] }
@@ -40,6 +42,34 @@ bench = false
 [[bin]]
 name = "payload_decode"
 path = "fuzz_targets/payload_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "csv_import"
+path = "fuzz_targets/csv_import.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pairing_parse"
+path = "fuzz_targets/pairing_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "totp_uri"
+path = "fuzz_targets/totp_uri.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "vault_header"
+path = "fuzz_targets/vault_header.rs"
 test = false
 doc = false
 bench = false
