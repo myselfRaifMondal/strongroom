@@ -1,7 +1,8 @@
 # Long fuzzing: runs each cargo-fuzz target for a set time (default 1 hour),
 # keeps the corpus between runs in the Actions cache, minimises it with
 # `cargo fuzz cmin`, and fails the job if any input crashes.
-# The 60-second smoke runs on every pull request stay in rust.yml.
+# The 60-second smoke runs on every pull request stay in rust.yml; this
+# workflow runs on a pull request only when it or fuzz/minimise.sh changes.
 #
 # Crash inputs are uploaded as a private run artifact. Treat a crash as a
 # possible vulnerability and report it as docs/SECURITY.md says.
@@ -16,6 +17,12 @@ on:
         description: "Run time per target, in seconds (max 18000)"
         required: false
         default: "3600"
+  # A short run when this workflow or the minimise script changes, so the
+  # pipeline itself is tested before it reaches main.
+  pull_request:
+    paths:
+      - ".github/workflows/fuzz-long.yml"
+      - "fuzz/minimise.sh"
 
 permissions:
   contents: read
@@ -46,7 +53,7 @@ jobs:
       - name: run time
         id: time
         env:
-          SECONDS_IN: ${{ inputs.seconds || '3600' }}
+          SECONDS_IN: ${{ inputs.seconds || (github.event_name == 'pull_request' && '60' || '3600') }}
         run: |
           if ! [[ "$SECONDS_IN" =~ ^[0-9]+$ ]] || [ "$SECONDS_IN" -lt 1 ] || [ "$SECONDS_IN" -gt 18000 ]; then
             echo "::error::seconds must be a whole number from 1 to 18000"
