@@ -42,13 +42,32 @@ let package = Package(
             ]
         ),
 
-        .executableTarget(
-            name: "StrongroomMac",
+        // The app's SwiftUI views, model and AppKit glue. A library (kept in
+        // Sources/StrongroomMac) so the debug snapshot harness can render the
+        // same views; the app executable below only calls its entry point.
+        .target(
+            name: "StrongroomMacUI",
             dependencies: ["StrongroomKit"],
+            path: "Sources/StrongroomMac",
             linkerSettings: [
                 .linkedFramework("Carbon"),
                 .linkedFramework("ApplicationServices"),
             ]
+        ),
+
+        .executableTarget(
+            name: "StrongroomMac",
+            dependencies: ["StrongroomMacUI"],
+            path: "Sources/StrongroomMacMain"
+        ),
+
+        // Debug-only tool: renders the app's screens offscreen to PNG at
+        // several window sizes, light and dark, from a throwaway vault. Not
+        // part of Strongroom.app (scripts/build-app.sh builds only the app and
+        // CLI products). See Sources/StrongroomSnapshots/main.swift.
+        .executableTarget(
+            name: "StrongroomSnapshots",
+            dependencies: ["StrongroomMacUI", "StrongroomKit"]
         ),
 
         .executableTarget(
