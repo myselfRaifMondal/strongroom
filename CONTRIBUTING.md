@@ -46,7 +46,8 @@ the end-user guide is [apps/windows/INSTALL.md](apps/windows/INSTALL.md).
 - `crates/strongroom-ffi`: `strongroom.udl` is the contract every app uses.
 - `apps/<platform>`: the native apps.
 - `vectors/`, `reference/`, `fuzz/`: format test vectors, the independent
-  Python implementation and fuzz targets.
+  Python implementation and fuzz targets. [fuzz/README.md](fuzz/README.md)
+  explains how to run long fuzzing locally.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
   [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) and
   [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md) explain the design and
