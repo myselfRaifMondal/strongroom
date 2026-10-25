@@ -3,9 +3,9 @@ import Foundation
 @testable import StrongroomKit
 import Testing
 
-/// Exercises the generated bindings against whatever core is linked. On
-/// main's stub core the calls report Unsupported (or return empty values);
-/// those tests then stop early instead of failing, like the CLI round-trip.
+/// Exercises the generated bindings against whatever core is linked. If the
+/// core reports Unsupported (or returns empty values), those tests stop early
+/// instead of failing.
 @Suite(.serialized) struct CoreBindingTests {
     @Test func bindingsLinkAndCall() {
         let sk = generateSecretKey()
@@ -30,7 +30,7 @@ import Testing
 
     @Test func vaultRoundTripOnCoreThread() async throws {
         let sk = generateSecretKey()
-        guard !sk.isEmpty else { return } // stub core
+        guard !sk.isEmpty else { return } // core reported Unsupported / empty
         let base = FileManager.default.temporaryDirectory.appendingPathComponent("strongroom-core-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: base) }
@@ -75,7 +75,7 @@ import Testing
         do {
             try gate.recordPasswordUnlock(now: now)
         } catch let e where CoreErrors.isUnsupported(e) {
-            return // stub core
+            return // core reported Unsupported / empty
         }
         #expect(gate.check(now: now + 60, rebootedSinceLastPassword: false, enrollmentChanged: false, hasDeviceKey: true) == .notRequired)
         #expect(gate.check(now: now + 60, rebootedSinceLastPassword: false, enrollmentChanged: false, hasDeviceKey: false) == .noBiometricKey)
@@ -91,7 +91,7 @@ import Testing
     /// End to end over the real Secure Enclave without a Touch ID prompt: the
     /// vault key is wrapped to an SE key (no biometry flag, test only) and the
     /// vault is reopened through `unlock_with_device_key`, i.e. one SE ECDH
-    /// driven by the core's HPKE receiver. Skipped without an SE or on stubs.
+    /// driven by the core's HPKE receiver. Skipped without an SE or if the core reports Unsupported.
     @Test func deviceKeyUnlockThroughSecureEnclave() async throws {
         let sk = generateSecretKey()
         guard !sk.isEmpty, SecureEnclave.isAvailable else { return }

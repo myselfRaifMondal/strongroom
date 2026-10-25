@@ -4,7 +4,7 @@ import Foundation
 import Testing
 
 /// End-to-end checks of the new macOS features against the real core (each
-/// test stops early on a stub core, like CoreBindingTests).
+/// test stops early if the core reports Unsupported, like CoreBindingTests).
 @Suite(.serialized) struct CoreFeatureTests {
     private func withTempDir<T>(_ body: (URL) async throws -> T) async throws -> T {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent("strongroom-feat-\(UUID().uuidString)")

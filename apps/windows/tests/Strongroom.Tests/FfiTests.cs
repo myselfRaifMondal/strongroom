@@ -5,9 +5,9 @@ using Xunit;
 namespace Strongroom.Tests;
 
 /// <summary>
-/// Calls through the generated bindings into strongroom_ffi.dll. While the
-/// core bodies are stubs they return Unsupported; those tests skip with that
-/// reason instead of passing silently.
+/// Calls through the generated bindings into strongroom_ffi.dll. If the core
+/// reports Unsupported, those tests skip with that reason instead of passing
+/// silently.
 /// </summary>
 public class FfiTests
 {
@@ -40,7 +40,7 @@ public class FfiTests
         try
         {
             string sk = StrongroomCore.GenerateSecretKey();
-            Skip.If(sk.Length == 0, "core stub: generate_secret_key returns an empty string");
+            Skip.If(sk.Length == 0, "generate_secret_key returned an empty string");
             Vault vault;
             try
             {
@@ -48,7 +48,7 @@ public class FfiTests
             }
             catch (StrongroomException.Unsupported e)
             {
-                Skip.If(true, $"core stub: {e.@reason}");
+                Skip.If(true, $"core reported Unsupported: {e.@reason}");
                 return;
             }
             using (vault)

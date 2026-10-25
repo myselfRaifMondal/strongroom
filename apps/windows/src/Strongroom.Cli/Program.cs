@@ -7,7 +7,7 @@
 //   STRONGROOM_ITEM_PASSWORD optional password for `add`
 //
 // Exit codes: 0 ok, 1 failure, 2 usage, 3 the core reported Unsupported
-// (FFI bodies not implemented yet).
+// (a feature missing from the linked core; CI treats it as a failure).
 
 using System.Text;
 using Strongroom.Core.Security;
@@ -267,7 +267,7 @@ internal static class Program
         try
         {
             var sk = StrongroomCore.GenerateSecretKey();
-            Console.WriteLine($"FFI: strongroom_ffi loaded; generate_secret_key -> {(sk.Length == 0 ? "empty (core stub)" : $"{sk.Length} chars")}");
+            Console.WriteLine($"FFI: strongroom_ffi loaded; generate_secret_key -> {(sk.Length == 0 ? "empty (no Secret Key returned)" : $"{sk.Length} chars")}");
             var strength = StrongroomCore.EstimateStrength("correct horse battery staple");
             Console.WriteLine($"FFI: estimate_strength -> score={strength.Score} entropy={strength.EntropyBits:F1}");
         }
