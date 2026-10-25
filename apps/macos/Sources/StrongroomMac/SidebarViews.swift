@@ -14,65 +14,68 @@ struct SidebarView: View {
     }
 
     var body: some View {
-        List(selection: selection) {
-            Section {
-                SidebarRow(title: "All Items", symbol: "tray.full", count: model.allItems.count)
-                    .tag(SidebarSelection.all)
-                    .dropDestination(for: String.self) { strings, _ in
-                        drop(strings, to: [])
+        // The New Folder bar sits below the list, not over it, so the list
+        // ends above it and its last rows are never hidden in short windows.
+        VStack(spacing: 0) {
+            List(selection: selection) {
+                Section {
+                    SidebarRow(title: "All Items", symbol: "tray.full", count: model.allItems.count)
+                        .tag(SidebarSelection.all)
+                        .dropDestination(for: String.self) { strings, _ in
+                            drop(strings, to: [])
+                        }
+                        .help("Drop items here to take them out of their folder")
+                    SidebarRow(title: "Favourites", symbol: "star", count: model.favouriteCount)
+                        .tag(SidebarSelection.favourites)
+                }
+                Section("Folders") {
+                    if model.tree.isEmpty {
+                        Text("No folders yet. Use New Folder below, or give an item a folder like “Social/Instagram”.")
+                            .font(.callout).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .selectionDisabled()
                     }
-                    .help("Drop items here to take them out of their folder")
-                SidebarRow(title: "Favourites", symbol: "star", count: model.favouriteCount)
-                    .tag(SidebarSelection.favourites)
-            }
-            Section("Folders") {
-                if model.tree.isEmpty {
-                    Text("No folders yet. Use New Folder below, or give an item a folder like “Social/Instagram”.")
-                        .font(.callout).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .selectionDisabled()
-                }
-                ForEach(model.tree) { node in
-                    FolderTreeRow(node: node, expanded: $expanded)
-                }
-            }
-            if !model.userTags.isEmpty {
-                Section("Tags") {
-                    ForEach(model.userTags, id: \.self) { tag in
-                        SidebarRow(title: tag, symbol: "tag", count: model.count(tag: tag))
-                            .tag(SidebarSelection.tag(tag))
+                    ForEach(model.tree) { node in
+                        FolderTreeRow(node: node, expanded: $expanded)
                     }
                 }
-            }
-            Section("Tools") {
-                HStack {
-                    Label("Password Health", systemImage: "checkmark.shield")
-                    Spacer()
-                    if let score = model.health?.securityScore {
-                        Text("\(score)").font(.caption.monospacedDigit().weight(.semibold))
-                            .foregroundStyle(HealthView.color(for: score))
-                            .help("Security score \(score) of 100")
-                            .accessibilityLabel("Security score \(score)")
+                if !model.userTags.isEmpty {
+                    Section("Tags") {
+                        ForEach(model.userTags, id: \.self) { tag in
+                            SidebarRow(title: tag, symbol: "tag", count: model.count(tag: tag))
+                                .tag(SidebarSelection.tag(tag))
+                        }
                     }
                 }
-                .tag(SidebarSelection.health)
-                HStack {
-                    Label("Security Ranking", systemImage: "list.number")
-                    Spacer()
-                    if model.ranking.dueCount > 0 {
-                        Text("\(model.ranking.dueCount)").font(.caption.monospacedDigit().weight(.semibold))
-                            .foregroundStyle(.orange)
-                            .help("\(model.ranking.dueCount) due for a change")
-                            .accessibilityLabel("\(model.ranking.dueCount) due for a change")
+                Section("Tools") {
+                    HStack {
+                        Label("Password Health", systemImage: "checkmark.shield")
+                        Spacer()
+                        if let score = model.health?.securityScore {
+                            Text("\(score)").font(.caption.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(HealthView.color(for: score))
+                                .help("Security score \(score) of 100")
+                                .accessibilityLabel("Security score \(score)")
+                        }
                     }
+                    .tag(SidebarSelection.health)
+                    HStack {
+                        Label("Security Ranking", systemImage: "list.number")
+                        Spacer()
+                        if model.ranking.dueCount > 0 {
+                            Text("\(model.ranking.dueCount)").font(.caption.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(.orange)
+                                .help("\(model.ranking.dueCount) due for a change")
+                                .accessibilityLabel("\(model.ranking.dueCount) due for a change")
+                        }
+                    }
+                    .tag(SidebarSelection.ranking)
+                    SidebarRow(title: "Trash", symbol: "trash", count: model.trash.count)
+                        .tag(SidebarSelection.trash)
                 }
-                .tag(SidebarSelection.ranking)
-                SidebarRow(title: "Trash", symbol: "trash", count: model.trash.count)
-                    .tag(SidebarSelection.trash)
             }
-        }
-        .listStyle(.sidebar)
-        .safeAreaInset(edge: .bottom) {
+            .listStyle(.sidebar)
+            Divider()
             HStack {
                 Button {
                     model.sheet = .folderName(.create(parent: model.currentFolder))
