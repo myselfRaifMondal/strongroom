@@ -29,6 +29,10 @@ public struct DataDirectory: Sendable {
 
     public var vaultPath: URL { url.appendingPathComponent("vault.srdb") }
     public var unlockGateStatePath: URL { url.appendingPathComponent("unlock-gate.state") }
+    /// Secure Enclave signature over the gate state (see `SealedUnlockGate`).
+    public var unlockGateSealPath: URL { url.appendingPathComponent("unlock-gate.seal") }
+    /// Secure Enclave signing key blob for the gate seal (no user presence).
+    public var gateSealKeyBlobPath: URL { url.appendingPathComponent("gate-seal-key.se") }
     /// Secure Enclave key blob (`dataRepresentation`): encrypted by the SE,
     /// usable only on this Mac.
     public var deviceKeyBlobPath: URL { url.appendingPathComponent("device-key.se") }

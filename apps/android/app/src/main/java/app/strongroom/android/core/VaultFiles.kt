@@ -20,6 +20,9 @@ class VaultFiles(context: Context) {
     fun exists(name: String): Boolean = File(vaultPath(name)).exists()
     fun gateStatePath(name: String): String = File(gateDir, "$name.state").absolutePath
 
+    /** Keystore HMAC over the gate state (see GateSeal). */
+    fun gateSealFile(name: String): File = File(gateDir, "$name.seal")
+
     /** HPKE-wrapped vault key for this device; safe at rest per the contract. */
     fun wrappedKeyFile(name: String): File = File(deviceDir, "$name.wrapped")
 

@@ -1,14 +1,18 @@
 import Foundation
 
 /// Touch ID unlock: Secure Enclave key + device-wrapped vault key on disk,
-/// with `UnlockGate` deciding when the master password is required.
+/// with `UnlockGate` deciding when the master password is required. The
+/// gate state is sealed with a Secure Enclave key (`SealedUnlockGate`).
 public final class DeviceUnlock: @unchecked Sendable {
     public let dir: DataDirectory
-    public let gate: UnlockGate
+    public let gate: SealedUnlockGate
 
-    public init(dir: DataDirectory) throws {
+    /// `sealKey` defaults to a Secure Enclave key; tests pass a software one.
+    public init(dir: DataDirectory, sealKey: GateSealKey? = nil) throws {
         self.dir = dir
-        self.gate = try UnlockGate(statePath: dir.unlockGateStatePath.path)
+        self.gate = try SealedUnlockGate(
+            statePath: dir.unlockGateStatePath, sealPath: dir.unlockGateSealPath,
+            key: sealKey ?? SecureEnclaveGateSealKey(blobPath: dir.gateSealKeyBlobPath))
     }
 
     /// Both files present (the feature was turned on for this vault).

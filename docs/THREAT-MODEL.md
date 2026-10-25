@@ -18,7 +18,7 @@ the person.
 | ECDH shared secret from `DeviceKeyAgreement.agree` | returned across FFI from platform to core | high: with the matching wrapped key or slot it unwraps that one key |
 | VTF export files | wherever the user puts them (USB, AirDrop, cloud drive, email) | encrypted; confidentiality rests on password + Secret Key or device key |
 | Device-wrapped vault key (`wrap_vault_key_for_device`) | platform keychain / credential store | encrypted to the hardware key |
-| UnlockGate state (failed-biometric counter, last-password time) | plain file at `state_path` | low confidentiality, but it carries policy integrity |
+| UnlockGate state (failed-biometric counter, last-password time) | plain file at `state_path`, sealed by the platform layer (residual risk 3) | low confidentiality, but it carries policy integrity |
 | Metadata: item count, export time, file size | VTF file length (chunked to 64 KiB); `exported_at` is inside the ciphertext | low |
 
 ## 2. Adversaries
@@ -122,7 +122,7 @@ A crafted `.vtf` or CSV file aimed at crashing or exploiting the importer.
 |---|---|---|
 | UI ↔ core (UniFFI, `strongroom.udl`, frozen) | passwords, Secret Keys, item fields as managed strings; summaries, errors | Raw keys never cross. Unlock failures are a single `UnlockFailed` with no detail. Errors carry no secrets. |
 | Core ↔ secure hardware (`DeviceKeyAgreement`) | 65-byte public keys out; 32-byte ECDH x-coordinate back | The private key never leaves hardware. The core validates `enc` before the hardware sees it. Each use can require biometrics. |
-| Core ↔ storage | SQLCipher pages, VTF bytes | Everything on disk is encrypted, except UnlockGate state. Imports are untrusted input (A4). |
+| Core ↔ storage | SQLCipher pages, VTF bytes | Everything on disk is encrypted, except UnlockGate state, which is sealed by the platform layer. Imports are untrusted input (A4). |
 | Device ↔ device | VTF file, user-carried | Untrusted channel (A3). Pairing compares a short fingerprint of the device public key on both screens. |
 | App ↔ network | only the opt-in HIBP request: a 5-hex-char SHA-1 prefix | Product code makes no other network call. SHA-1 runs in the platform layer, never in the core. |
 | Core ↔ OS clock / RNG | timestamps passed in by the caller; OS CSPRNG | The core never reads the clock. |
@@ -137,12 +137,26 @@ A crafted `.vtf` or CSV file aimed at crashing or exploiting the importer.
    memory, swap or crash dumps until collected and overwritten. The same goes
    for the ECDH shared secret returned as `bytes` by `DeviceKeyAgreement`.
    The Rust side zeroizes its copies.
-3. **UnlockGate state file is not integrity-protected.** An attacker with
-   write access to the app's storage on a locked device can reset the
-   failed-biometric counter or the 7-day timer, and so get more biometric
-   attempts than the policy allows. Hardware-enforced biometric rate limits
+3. **UnlockGate state can be replayed, not edited.** The core file has no
+   integrity protection of its own (format and FFI unchanged). Each platform
+   keeps a seal next to it, made with a key that needs no user presence:
+   a Secure Enclave P-256 signature on macOS, a Keystore HMAC-SHA256 key on
+   Android, DPAPI (current user) on Windows. The seal covers the state file's
+   name and bytes. A state file with a missing or wrong seal is deleted
+   before the gate reads it, and the core treats a missing file as "password
+   required", so editing the counter or the 7-day timer now forces the
+   master password (issue #29). Existing installs ask for the password once
+   after the update, because their state has no seal yet.
+   Residual: an attacker who saved an earlier state file **and** its seal
+   can put both back and so reset the failure counter to that earlier value
+   (none of the platforms gives us a cheap monotonic counter). That only
+   works within 7 days of the saved password unlock. The reboot and
+   enrollment signals (`last-password-boot`, biometry state) are separate
+   plain files and are not sealed. Malware running as the user on an unlocked
+   device (A2) can make valid seals. Hardware-enforced biometric rate limits
    (Secure Enclave / Keystore / Windows Hello) still apply, and the vault key
-   still needs the hardware ECDH.
+   still needs the hardware ECDH. Replay protection and sealing the signal
+   files are tracked in issue #45.
 4. **HIBP breach check makes a network call** when the user turns it on.
    It sends a 5-character SHA-1 prefix (k-anonymity), and the timing and
    destination reveal that the user runs a breach check. Off by default.
