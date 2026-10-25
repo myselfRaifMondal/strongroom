@@ -220,11 +220,14 @@ jobs:
 
       # Code signing (#27). Runs only when every value below is set; the step
       # prints only "enabled"/"disabled", never a value. Secrets cannot be
-      # used in `if:` directly, hence this check.
+      # used in `if:` directly, hence this check. Pull requests never sign:
+      # same-repo PRs receive repository secrets. In a called workflow
+      # github.event_name is the caller's event, so this covers release.yml.
       - name: Signing configured?
         id: signing
         shell: bash
         env:
+          EVENT: ${{ github.event_name }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
@@ -232,7 +235,9 @@ jobs:
           SIGNING_ACCOUNT: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
           SIGNING_PROFILE: ${{ vars.WINDOWS_SIGNING_PROFILE }}
         run: |
-          if [ -n "$AZURE_CLIENT_ID" ] && [ -n "$AZURE_TENANT_ID" ] && [ -n "$AZURE_SUBSCRIPTION_ID" ] \
+          if [ "$EVENT" = "pull_request" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"; echo "signing: disabled (pull request), building unsigned"
+          elif [ -n "$AZURE_CLIENT_ID" ] && [ -n "$AZURE_TENANT_ID" ] && [ -n "$AZURE_SUBSCRIPTION_ID" ] \
              && [ -n "$SIGNING_ENDPOINT" ] && [ -n "$SIGNING_ACCOUNT" ] && [ -n "$SIGNING_PROFILE" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"; echo "signing: enabled"
           else

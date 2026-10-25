@@ -42,7 +42,11 @@ before tagging.
 
 Each signing step runs only when all of its secrets (and variables) are
 set. Without them the build still succeeds and the files are named
-`-unsigned`. Forks and pull requests therefore always build unsigned. The
+`-unsigned`. Pull requests never sign, even when the secrets are set,
+because GitHub gives repository secrets to pull requests from branches in
+this repository. Forks get no secrets, so they build unsigned too. Other runs
+(tag pushes, manual `workflow_dispatch` runs, and branch pushes that start
+`windows-installer.yml`) sign when the secrets are set. The
 workflows check whether a secret is set without printing it.
 
 Add secrets under **Settings > Secrets and variables > Actions**. **Never**

@@ -124,13 +124,17 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       # Prints only "enabled"/"disabled". Secrets cannot be used in `if:`.
+      # Pull requests never sign: same-repo PRs receive repository secrets.
       - name: Signing configured?
         id: signing
         env:
+          EVENT: ${{ github.event_name }}
           KEYSTORE_B64: ${{ secrets.STRONGROOM_ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.STRONGROOM_ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+          if [ "$EVENT" = "pull_request" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"; echo "signing: disabled (pull request), building unsigned"
+          elif [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"; echo "signing: enabled"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"; echo "signing: disabled (secrets not set), building unsigned"
@@ -138,15 +142,16 @@ jobs:
 
       # build.gradle.kts reads STRONGROOM_ANDROID_KEYSTORE* from the
       # environment. They are exported only inside this step, and only when
-      # set, so an unset alias keeps the "strongroom" default.
+      # set, so an unset alias keeps the "strongroom" default. Pull requests
+      # do not get the secrets in this step at all.
       - name: Gradle assembleRelease
         working-directory: apps/android
         env:
           SIGN: ${{ steps.signing.outputs.enabled }}
-          KEYSTORE_B64: ${{ secrets.STRONGROOM_ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.STRONGROOM_ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.STRONGROOM_ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.STRONGROOM_ANDROID_KEY_PASSWORD }}
+          KEYSTORE_B64: ${{ github.event_name != 'pull_request' && secrets.STRONGROOM_ANDROID_KEYSTORE_BASE64 || '' }}
+          KEYSTORE_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.STRONGROOM_ANDROID_KEYSTORE_PASSWORD || '' }}
+          KEY_ALIAS: ${{ github.event_name != 'pull_request' && secrets.STRONGROOM_ANDROID_KEY_ALIAS || '' }}
+          KEY_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.STRONGROOM_ANDROID_KEY_PASSWORD || '' }}
         run: |
           set -euo pipefail
           if [ "$SIGN" = "true" ]; then
@@ -214,9 +219,11 @@ jobs:
         run: apps/macos/scripts/build-app.sh
 
       # Prints only "enabled"/"disabled". Secrets cannot be used in `if:`.
+      # Pull requests never sign: same-repo PRs receive repository secrets.
       - name: Signing configured?
         id: signing
         env:
+          EVENT: ${{ github.event_name }}
           P12_B64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
@@ -224,7 +231,9 @@ jobs:
           NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
         run: |
-          if [ -n "$P12_B64" ] && [ -n "$P12_PASSWORD" ] && [ -n "$IDENTITY" ] \
+          if [ "$EVENT" = "pull_request" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"; echo "signing: disabled (pull request), app stays ad-hoc signed"
+          elif [ -n "$P12_B64" ] && [ -n "$P12_PASSWORD" ] && [ -n "$IDENTITY" ] \
              && [ -n "$NOTARY_KEY_B64" ] && [ -n "$NOTARY_KEY_ID" ] && [ -n "$NOTARY_ISSUER" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"; echo "signing: enabled"
           else
