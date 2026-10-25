@@ -85,6 +85,12 @@ val buildRust by tasks.registering(Exec::class) {
     description = "cargo-ndk build of strongroom-ffi + uniffi-bindgen Kotlin bindings"
     workingDir = rootProject.projectDir
     commandLine("bash", "scripts/build-rust.sh")
+    // A release APK must never ship the unoptimised debug core (Argon2id is
+    // far slower there). STRONGROOM_RUST_PROFILE still wins when set.
+    val releaseRequested = gradle.startParameter.taskNames.any { it.contains("Release") }
+    if (System.getenv("STRONGROOM_RUST_PROFILE") == null && releaseRequested) {
+        environment("STRONGROOM_RUST_PROFILE", "release")
+    }
     onlyIf { !project.hasProperty("strongroom.skipRust") }
 }
 tasks.named("preBuild") { dependsOn(buildRust) }
