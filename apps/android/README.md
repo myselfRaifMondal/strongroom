@@ -57,3 +57,11 @@ form for trying the autofill service without a browser or network:
 The WebView form reports this app's package name (not a web domain) to the
 autofill service, so the matching vault item needs the website
 `app.strongroom.android.test`. Locked vaults show "Unlock Strongroom".
+
+Saving: on the native form, type a username and password and tap "Sign
+in". Android offers "Save username and password to Strongroom?" (or
+"Update ..." for a known login). Accepting opens Strongroom, which unlocks
+the vault if needed and shows the title, username and URL to confirm;
+nothing is written before you tap Save or Update. Updating keeps the old
+password in the item's history. The captured password stays in process
+memory only until you answer.

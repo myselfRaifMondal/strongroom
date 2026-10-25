@@ -42,6 +42,17 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection"
             android:theme="@style/Theme.Strongroom" />
 
+        <!-- Launched by the autofill framework after the user accepts "Save
+             to Strongroom". Asks to unlock and to confirm before anything is
+             written; not exported. -->
+        <activity
+            android:name=".autofill.AutofillSaveActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Strongroom" />
+
         <service
             android:name=".autofill.StrongroomAutofillService"
             android:exported="true"
