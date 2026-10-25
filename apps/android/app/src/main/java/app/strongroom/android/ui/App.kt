@@ -32,7 +32,8 @@ sealed interface Route {
     data class Unlock(val vaultName: String) : Route
     data object Items : Route { override val needsVault = true }
     data class Detail(val id: String) : Route { override val needsVault = true }
-    data class Edit(val id: String?) : Route { override val needsVault = true }
+    /** [folder]: prefilled folder of a new item (the selected folder). */
+    data class Edit(val id: String?, val folder: String? = null) : Route { override val needsVault = true }
     data class History(val id: String) : Route { override val needsVault = true }
 
     /** [forEditor]: opened from the item editor; offers "Use this password". */
@@ -42,6 +43,8 @@ sealed interface Route {
     data object ImportCsv : Route { override val needsVault = true }
     data object Trash : Route { override val needsVault = true }
     data object Settings : Route { override val needsVault = true }
+    data object Ranking : Route { override val needsVault = true }
+    data object Health : Route { override val needsVault = true }
 }
 
 /**
@@ -122,7 +125,7 @@ fun StrongroomUi() {
                         is Route.Unlock -> UnlockScreen(nav, r.vaultName)
                         Route.Items -> if (unlocked != null) ItemListScreen(nav)
                         is Route.Detail -> if (unlocked != null) ItemDetailScreen(nav, r.id)
-                        is Route.Edit -> if (unlocked != null) ItemEditScreen(nav, r.id)
+                        is Route.Edit -> if (unlocked != null) ItemEditScreen(nav, r.id, r.folder)
                         is Route.History -> if (unlocked != null) HistoryScreen(nav, r.id)
                         is Route.Generator -> GeneratorScreen(nav, r.forEditor)
                         Route.Export -> if (unlocked != null) ExportScreen(nav)
@@ -130,6 +133,8 @@ fun StrongroomUi() {
                         Route.ImportCsv -> if (unlocked != null) ImportCsvScreen(nav)
                         Route.Trash -> if (unlocked != null) TrashScreen(nav)
                         Route.Settings -> if (unlocked != null) SettingsScreen(nav)
+                        Route.Ranking -> if (unlocked != null) RankingScreen(nav)
+                        Route.Health -> if (unlocked != null) HealthScreen(nav)
                     }
                 }
             }

@@ -14,6 +14,27 @@ Kotlin bindings generated from the frozen UDL, loaded through JNA).
   `FLAG_SECURE` on every activity window. Clipboard copies are marked
   sensitive and cleared after 25 s.
 
+## Folders and Security Ranking
+
+Ported from the macOS app (`apps/macos/Sources/StrongroomKit`, OQ-M6 and
+OQ-M9); no FFI or format change.
+
+- **Folders**: an item's folder is a path ("Social/Instagram"). "Folders" on
+  the item list shows the tree with counts; picking a folder lists its whole
+  subtree. Rename and Move rewrite the folder of every item in the subtree
+  with `update_item` (each keeps the old folder in its history). A new empty
+  folder lasts until the vault locks, unless an item is saved in it.
+- **Security Ranking** (Menu): every password scored 0-100 with the same
+  formula as macOS (`core/SecurityRanking.kt`), worst first, or grouped by
+  shared password. **Password Health** shows the core's `password_health`.
+- **Rotation reminders**: after unlock the item list shows "N passwords
+  should be changed" (only a count) with Review and "Remind me in a week".
+  Intervals are in Settings (critical 90 days, others a year by default).
+  There is no scheduled notification on Android.
+
+Passwords are compared and scored in memory while unlocked; only item ids,
+scores and counts are kept, and they are dropped on lock.
+
 ## Build
 
     rustup target add aarch64-linux-android x86_64-linux-android
@@ -37,12 +58,14 @@ it when the `.so` and bindings already exist.
 ## Tests
 
 - `./gradlew testDebugUnitTest` - pure logic (master-password rule, CSV
-  source detection, back-stack state, autofill field heuristics, SEC1, boot id).
+  source detection, back-stack state, autofill field heuristics, SEC1, boot id,
+  folder tree, risk score, rotation rules, service categories).
 - `./gradlew connectedDebugAndroidTest` - on a device/emulator whose screen
   is unlocked (after a reboot the user storage stays locked until the PIN is
   entered, and instrumentation cannot start): config-change handling, no
   network permission, sensitive + auto-cleared clipboard (takes ~30 s), CSV
-  import for every supported exporter, plus the VTF probes (skipped without
+  import for every supported exporter, ranking and folder move through the
+  real core, plus the VTF probes (skipped without
   arguments).
 
 ## Autofill walkthrough on an emulator

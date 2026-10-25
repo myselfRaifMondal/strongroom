@@ -45,6 +45,7 @@ object Session {
             runCatching { v.close() }
         }
         current = null
+        VaultAnalysis.clear()
     }
 
     /** The unlocked vault or throws [IllegalStateException]. */

@@ -271,6 +271,8 @@ fun SettingsScreen(nav: Nav) {
             Switch(checked = travel, onCheckedChange = { confirmTravel = it }, modifier = Modifier.testTag("travelMode"))
             Text(if (travel) "  On" else "  Off ($notTravelSafe item(s) would be removed)")
         }
+        HorizontalDivider()
+        RotationSettingsSection(app)
         OpStatus(op)
     }
 }
