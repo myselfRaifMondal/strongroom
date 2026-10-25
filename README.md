@@ -8,6 +8,9 @@
 [![android](https://github.com/myselfRaifMondal/strongroom/actions/workflows/android.yml/badge.svg)](https://github.com/myselfRaifMondal/strongroom/actions/workflows/android.yml)
 [![crossplatform](https://github.com/myselfRaifMondal/strongroom/actions/workflows/crossplatform.yml/badge.svg)](https://github.com/myselfRaifMondal/strongroom/actions/workflows/crossplatform.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
+[![good first issues](https://img.shields.io/github/issues/myselfRaifMondal/strongroom/good%20first%20issue?label=good%20first%20issues&color=7057ff)](https://github.com/myselfRaifMondal/strongroom/labels/good%20first%20issue)
+[![help wanted](https://img.shields.io/github/issues/myselfRaifMondal/strongroom/help%20wanted?label=help%20wanted&color=008672)](https://github.com/myselfRaifMondal/strongroom/labels/help%20wanted)
+[![Discussions](https://img.shields.io/github/discussions/myselfRaifMondal/strongroom?label=discussions)](https://github.com/myselfRaifMondal/strongroom/discussions)
 
 A device-first, local-only password manager. Your vault lives encrypted on
 your own devices. There is **no server, no account and no cloud sync**:
@@ -15,6 +18,23 @@ vaults move between devices only as encrypted files you transfer yourself.
 
 One Rust security core does all the cryptography; each platform has a
 native app on top of it.
+
+<p align="center">
+  <img src="docs/images/macos-item-dark.png" width="760" alt="Strongroom on macOS: an Instagram login with its one-time code and recovery codes (made-up test data)">
+</p>
+
+<p align="center">
+  <img src="docs/images/macos-ranking-light.png" width="372" alt="Security Ranking: every password scored, worst first">
+  <img src="docs/images/macos-create-light.png" width="372" alt="Creating a vault: master password plus a Secret Key">
+</p>
+<p align="center"><sub>Screenshots use made-up test data.</sub></p>
+
+**Want to help?** Strongroom is young and has room for contributors at every
+level: Rust, Swift, Kotlin, C#, Python, CI, docs and testing on real devices.
+Start with a [good first issue](https://github.com/myselfRaifMondal/strongroom/labels/good%20first%20issue),
+read [CONTRIBUTING.md](CONTRIBUTING.md), or say hello in
+[Discussions](https://github.com/myselfRaifMondal/strongroom/discussions).
+If you find the project useful, a star helps other people find it.
 
 | Platform | App | Status |
 |----------|-----|--------|
@@ -130,6 +150,32 @@ workflows in `.github/workflows/`.
 | `reference/` | Independent Python reference implementation |
 | `fuzz/` | cargo-fuzz targets |
 | `docs/` | Spec, architecture, threat model, security policy, open questions |
+
+## Roadmap
+
+Rough order, not promises. Each line links to its tracking issue.
+
+- **Now:** a first pre-release with downloads for every platform
+  ([#28](https://github.com/myselfRaifMondal/strongroom/issues/28)), signed
+  builds ([#18](https://github.com/myselfRaifMondal/strongroom/issues/18),
+  [#27](https://github.com/myselfRaifMondal/strongroom/issues/27)) and
+  testing on real phones and PCs
+  ([#16](https://github.com/myselfRaifMondal/strongroom/issues/16),
+  [#17](https://github.com/myselfRaifMondal/strongroom/issues/17),
+  [#32](https://github.com/myselfRaifMondal/strongroom/issues/32)).
+- **Next:** feature parity on Windows and Android
+  ([#21](https://github.com/myselfRaifMondal/strongroom/issues/21),
+  [#51](https://github.com/myselfRaifMondal/strongroom/issues/51),
+  [#52](https://github.com/myselfRaifMondal/strongroom/issues/52)), better
+  importers ([#53](https://github.com/myselfRaifMondal/strongroom/issues/53))
+  and accessibility
+  ([#24](https://github.com/myselfRaifMondal/strongroom/issues/24),
+  [#54](https://github.com/myselfRaifMondal/strongroom/issues/54)).
+- **Later:** an opt-in breach check
+  ([#20](https://github.com/myselfRaifMondal/strongroom/issues/20)), iOS
+  ([#22](https://github.com/myselfRaifMondal/strongroom/issues/22)) and an
+  independent security review
+  ([#12](https://github.com/myselfRaifMondal/strongroom/issues/12)).
 
 ## Contributing
 
