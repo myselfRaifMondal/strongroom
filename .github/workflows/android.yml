@@ -68,7 +68,7 @@ jobs:
       - name: Build libstrongroom_ffi.so + Kotlin bindings
         run: apps/android/scripts/build-rust.sh
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       - name: Gradle assembleDebug + unit tests
         working-directory: apps/android

@@ -148,7 +148,7 @@ jobs:
           cargo ndk --version 2>/dev/null | grep -q "${CARGO_NDK_VERSION}" || cargo install cargo-ndk --locked --version "${CARGO_NDK_VERSION}"
       - name: Build .so + Kotlin bindings
         run: apps/android/scripts/build-rust.sh
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Build APKs
         working-directory: apps/android
         run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest -Pstrongroom.skipRust=true
