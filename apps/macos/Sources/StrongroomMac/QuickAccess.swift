@@ -116,8 +116,11 @@ struct QuickAccessView: View {
 
     private enum Focus: Hashable { case search, password, secretKey }
 
+    /// The list scrolls, so this only bounds the work per keystroke.
+    static let maxResults = 200
+
     private var results: [ItemSummary] {
-        Array(model.search(query).prefix(8))
+        Array(model.search(query).prefix(Self.maxResults))
     }
 
     var body: some View {
@@ -229,28 +232,38 @@ struct QuickAccessView: View {
                 Text(query.isEmpty ? "No items" : "No matches").foregroundStyle(.secondary).padding(.top, 20)
                     .frame(maxWidth: .infinity)
             }
-            ForEach(Array(list.enumerated()), id: \.element.id) { idx, item in
-                HStack {
-                    Image(systemName: item.kind.symbolName).frame(width: 20).foregroundStyle(.secondary)
-                    VStack(alignment: .leading) {
-                        Text(item.title).lineLimit(1)
-                        if let s = item.subtitle { Text(s).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
-                    }
-                    Spacer()
-                    if idx == selected {
-                        Button("Password") { selected = idx; copy(list, field: .password) }
-                        Button("Username") { selected = idx; copy(list, field: .username) }
-                        if item.hasTotp { Button("Code") { selected = idx; copy(list, field: .totp) } }
-                        Button("Type…") { selected = idx; autoType(list) }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(list.enumerated()), id: \.element.id) { idx, item in
+                            HStack {
+                                Image(systemName: item.kind.symbolName).frame(width: 20).foregroundStyle(.secondary)
+                                VStack(alignment: .leading) {
+                                    Text(item.title).lineLimit(1)
+                                    if let s = item.subtitle { Text(s).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                                }
+                                Spacer()
+                                if idx == selected {
+                                    Button("Password") { selected = idx; copy(list, field: .password) }
+                                    Button("Username") { selected = idx; copy(list, field: .username) }
+                                    if item.hasTotp { Button("Code") { selected = idx; copy(list, field: .totp) } }
+                                    Button("Type…") { selected = idx; autoType(list) }
+                                }
+                            }
+                            .controlSize(.small)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(idx == selected ? Color.accentColor.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 6))
+                            .contentShape(Rectangle())
+                            .onTapGesture { selected = idx }
+                            .id(idx)
+                        }
                     }
                 }
-                .controlSize(.small)
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(idx == selected ? Color.accentColor.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 6))
-                .contentShape(Rectangle())
-                .onTapGesture { selected = idx }
+                .frame(maxHeight: .infinity)
+                // Keep the arrow-key selection in view.
+                .onChange(of: selected) { proxy.scrollTo(selected) }
+                .onChange(of: query) { proxy.scrollTo(0, anchor: .top) }
             }
-            Spacer(minLength: 0)
             HStack {
                 Text(status ?? "↩ copy password · copied values clear after \(Int(SecureClipboard.defaultClearAfter)) s · esc closes")
                     .font(.caption).foregroundStyle(.secondary)
