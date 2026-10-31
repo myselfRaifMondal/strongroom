@@ -12,7 +12,7 @@ argon2 = { version = "0.6", default-features = false, features = ["alloc", "zero
 chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc", "getrandom", "zeroize"] }
 hkdf = "0.13"
 sha2 = { version = "0.11", default-features = false }
-hpke = { version = "0.14", default-features = false, features = ["nistp", "chacha", "getrandom", "alloc"] }
+hpke = { version = "0.15", default-features = false, features = ["nistp", "chacha", "getrandom", "alloc"] }
 zeroize = { version = "1.8", features = ["derive"] }
 subtle = "2.6"
 unicode-normalization = { version = "0.1", default-features = false }
