@@ -10,7 +10,7 @@ description = "Encrypted local vault store, items, merge, TOTP, generator, audit
 [dependencies]
 vtf-core = { path = "../vtf-core" }
 # SQLCipher with vendored OpenSSL (owner-approved).
-rusqlite = { version = "0.40", default-features = false, features = ["bundled-sqlcipher-vendored-openssl", "backup"] }
+rusqlite = { version = "0.41", default-features = false, features = ["bundled-sqlcipher-vendored-openssl", "backup"] }
 zeroize = { version = "1.8", features = ["derive"] }
 subtle = "2.6"
 sha2 = { version = "0.11", default-features = false }
